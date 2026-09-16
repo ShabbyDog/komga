@@ -10,7 +10,7 @@
 set -uo pipefail
 
 MIRROR=master                 # local pristine mirror of upstream; never commit here
-WORK=fork                     # our long-lived work branch
+WORK=ShabbyFork               # our long-lived work branch
 UPSTREAM_REF=upstream/master
 
 SYNC=0
