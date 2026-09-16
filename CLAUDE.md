@@ -15,11 +15,11 @@ requests, so our changes live here permanently and must survive repeated upstrea
 - **`master` is a pristine mirror of `upstream/master`. Never commit to it.** A local
   `pre-commit` hook blocks commits on `master` (`git commit --no-verify` overrides).
   Advance it only by fast-forward: `git fetch upstream master:master`.
-- **`fork` is the long-lived work branch** and tracks `origin/fork`. Start feature
-  branches from it (`git switch -c feat/x fork`) and merge them back into it.
+- **`ShabbyFork` is the long-lived work branch** and tracks `origin/ShabbyFork`. Start
+  feature branches from it (`git switch -c feat/x ShabbyFork`) and merge them back in.
 - **Absorb upstream by merging, never rebasing** (`git merge upstream/master`). Our
   branch is pushed and shared, so history must not be rewritten.
-- `git diff upstream/master fork` should only ever show our own files. If it shows
+- `git diff upstream/master ShabbyFork` should only ever show our own files. If it shows
   anything else, something leaked in during a merge.
 
 ### Checking for upstream drift
