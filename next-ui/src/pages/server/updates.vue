@@ -41,6 +41,8 @@
         </v-col>
       </v-row>
 
+      <ForkChangelog />
+
       <div
         v-for="(release, index) in releases"
         :key="index"
