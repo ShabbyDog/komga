@@ -67,9 +67,13 @@ if [ "$CHECK" -eq 1 ]; then
   exit 1
 fi
 
-if [ -n "$(git status --porcelain)" ]; then
+# Content-based, not `git status --porcelain`: frontend builds rewrite generated
+# files with identical content, which leaves them stat-dirty on Windows and would
+# otherwise block the rebase. Untracked files are harmless to a rebase.
+if ! git diff --quiet || ! git diff --cached --quiet; then
   echo
-  echo "error: working tree is not clean; commit or stash first" >&2
+  echo "error: there are uncommitted changes; commit or stash first" >&2
+  git diff --stat HEAD | tail -5 >&2
   exit 3
 fi
 
