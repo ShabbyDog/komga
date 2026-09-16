@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Check whether gotson/komga (upstream) has moved ahead of our fork branch,
-# and whether merging it in would conflict -- without touching the working tree.
+# Early warning about what upstream has landed since the release we build on.
+#
+# We build from release tags (see sync-release.sh), so these commits are NOT in
+# our jar yet -- this is a preview of the next release, and a check that our own
+# patches will still apply when it ships. Nothing here is touched or merged.
 #
 #   bash scripts/check-upstream.sh          # report only
 #   bash scripts/check-upstream.sh --sync   # also fast-forward the local `master` mirror
@@ -52,10 +55,10 @@ conflicts=$(git merge-tree --write-tree --name-only --no-messages "$WORK" "$UPST
 status=$?
 
 if [ $status -eq 0 ]; then
-  echo "Merge preview: CLEAN -- upstream merges into '$WORK' without conflicts."
+  echo "Conflict preview: CLEAN -- our commits still apply on top of upstream."
   rc=1
 else
-  echo "Merge preview: CONFLICTS in the following files:"
+  echo "Conflict preview: our patches CONFLICT in the following files:"
   echo "$conflicts" | sed 's/^/  /'
   rc=2
 fi
@@ -75,5 +78,6 @@ if [ "$SYNC" -eq 1 ]; then
 fi
 
 echo
-echo "To take the update:  git switch $WORK && git merge $UPSTREAM_REF"
+echo "These land in our build only once upstream tags a release."
+echo "To move onto the newest release:  bash scripts/sync-release.sh"
 exit $rc

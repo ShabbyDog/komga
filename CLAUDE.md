@@ -5,34 +5,74 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Fork workflow (read this first)
 
 This checkout is a **maintained fork** of `gotson/komga`. Upstream does not accept pull
-requests, so our changes live here permanently and must survive repeated upstream merges.
+requests, so our changes live here permanently.
 
 | Remote | Points at | Use |
 | --- | --- | --- |
 | `upstream` | `gotson/komga` | Fetch only. Its push URL is intentionally invalid. |
 | `origin` | `ShabbyDog/komga` | Where we push. |
 
-- **`master` is a pristine mirror of `upstream/master`. Never commit to it.** A local
-  `pre-commit` hook blocks commits on `master` (`git commit --no-verify` overrides).
-  Advance it only by fast-forward: `git fetch upstream master:master`.
-- **`ShabbyFork` is the long-lived work branch** and tracks `origin/ShabbyFork`. Start
-  feature branches from it (`git switch -c feat/x ShabbyFork`) and merge them back in.
-- **Absorb upstream by merging, never rebasing** (`git merge upstream/master`). Our
-  branch is pushed and shared, so history must not be rewritten.
-- `git diff upstream/master ShabbyFork` should only ever show our own files. If it shows
-  anything else, something leaked in during a merge.
+**Every jar we build must be "the last upstream *release* + our changes" — never a
+release plus unreleased upstream commits.** That is the whole shape of this workflow.
 
-### Checking for upstream drift
+- **`ShabbyFork` is the build branch.** Its history is always linear: the newest upstream
+  **release tag**, then our commits on top. Nothing else. It is what you build from.
+- **We rebase onto release tags; we do not merge `upstream/master`.** Merging master would
+  pull unreleased commits into the jar, which is exactly what we are avoiding. Rebasing
+  rewrites history, so pushing uses `git push --force-with-lease origin ShabbyFork`.
+- **`master` is a pristine mirror of `upstream/master`. Never commit to it.** It exists only
+  to see what upstream is doing. A local `pre-commit` hook blocks commits on it
+  (`git commit --no-verify` overrides). Advance it with `git fetch upstream master:master`.
+- `git diff <release tag> ShabbyFork` should only ever show our own files.
+
+### Moving onto a new upstream release
 
 ```bash
-git upstream-check    # report only; previews the merge without touching the tree
-git upstream-sync     # same, plus fast-forwards the `master` mirror
+git release-check    # is there a newer release tag? what would be replayed?
+git release-sync     # rebase ShabbyFork onto the newest release tag
 ```
 
-Both are aliases for `scripts/check-upstream.sh`. It reports how far upstream has moved,
-dry-runs the merge in memory via `git merge-tree`, lists conflicting files, and separately
-flags upstream edits that overlap files we modified — that last list is the real signal.
-Exit codes: `0` up to date, `1` updates available and merge is clean, `2` conflicts.
+Both are `scripts/sync-release.sh`. It fetches tags, picks the newest `X.Y.Z` tag by
+creation date, reports which release we are built on, and rebases our commits onto the
+new tag. It refuses to run on a dirty tree and always leaves a `backup/ShabbyFork-<stamp>`
+branch before rewriting anything. Exit codes: `0` already newest, `1` a newer release
+exists, `2` rebase stopped on conflicts, `3` error.
+
+After it succeeds: `git push --force-with-lease origin ShabbyFork`.
+
+### Early warning about the next release
+
+```bash
+git upstream-check   # what has landed on upstream/master since our release
+git upstream-sync    # same, plus fast-forwards the `master` mirror
+```
+
+`scripts/check-upstream.sh` is informational only — those commits are *not* in our jar.
+Its value is the last section, which lists upstream changes that touch files we have
+modified: that is advance notice that our patches will need work when the next release
+ships.
+
+### Building a jar
+
+Build from `ShabbyFork` (confirm with `git release-check` first). Requires JDK 21+;
+`org.gradle.java.home` is pinned in `~/.gradle/gradle.properties` because the system
+`JAVA_HOME` is JDK 17.
+
+```bash
+cd komga-webui && npm ci && npm run build
+cd ../next-ui   && npm ci && npm run build:with-i18n
+cd .. && ./gradlew :komga:webuiCopyIndex :komga:nextuiCopyIndex :komga:bootJar
+```
+
+The jar reports `v<version>-ShabbyFork`, where the version comes from `gradle.properties`
+at the release tag and the branch name from `gradle-git-properties`.
+
+### Fork-only additions
+
+- `FORK_CHANGELOG.md` — the fork's changelog, rendered above the upstream releases on the
+  updates screen in both UIs. Single source of truth; edit this file, nothing else.
+- `scripts/` — the two scripts above, plus `.gitattributes` pinning them to LF.
+- `next-ui/.gitattributes` — pins generated files to LF so builds do not dirty the tree.
 
 ## Projects
 
