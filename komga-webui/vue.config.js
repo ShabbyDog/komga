@@ -24,6 +24,11 @@ module.exports = {
   configureWebpack: {
     module: {
       rules: [
+        // ShabbyFork: import FORK_CHANGELOG.md as a raw string
+        {
+          test: /\.md$/,
+          type: 'asset/source',
+        },
         {
           test: [
             /readium\/.*\.css.resource$/,
