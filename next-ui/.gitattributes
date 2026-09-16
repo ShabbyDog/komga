@@ -1,0 +1,8 @@
+# ShabbyFork: these are rewritten by vite/unplugin on every build, which writes LF.
+# Without this the repo's `* text=auto` wants CRLF here and every build leaves the
+# tree dirty, which blocks scripts/sync-release.sh.
+src/auto-imports.d.ts text eol=lf
+src/components.d.ts text eol=lf
+src/route-map.d.ts text eol=lf
+.eslintrc-auto-import.json text eol=lf
+public-msw/mockServiceWorker.js text eol=lf
