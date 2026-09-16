@@ -88,11 +88,15 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // ShabbyFork: repository root, for FORK_CHANGELOG.md
+      '@fork': path.resolve(import.meta.dirname, '..'),
     },
     extensions: ['.js', '.json', '.jsx', '.mjs', '.ts', '.tsx', '.vue'],
   },
   server: {
     port: 3000,
+    // ShabbyFork: allow the dev server to read FORK_CHANGELOG.md from the repo root
+    fs: { allow: [path.resolve(import.meta.dirname, '..')] },
   },
   base: '/',
   // use 'prod' when building the app because storybook always use 'production' and cannot be configured.

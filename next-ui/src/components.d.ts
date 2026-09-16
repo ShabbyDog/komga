@@ -94,6 +94,7 @@ declare module 'vue' {
     FilterSearchList: typeof import('./components/filter/SearchList.vue')['default']
     FilterSelectRange: typeof import('./components/filter/SelectRange.vue')['default']
     FilterTriState: typeof import('./components/filter/TriState.vue')['default']
+    ForkChangelog: typeof import('./components/fork/Changelog.vue')['default']
     FormattedMessage: typeof import('./components/FormattedMessage.ts')['default']
     HistoryExpandBookConverted: typeof import('./components/history/expand/BookConverted.vue')['default']
     HistoryExpandBookFileDeleted: typeof import('./components/history/expand/BookFileDeleted.vue')['default']

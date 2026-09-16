@@ -15,6 +15,8 @@
       </v-col>
     </v-row>
 
+    <fork-changelog/>
+
     <div v-for="(release, index) in $store.state.releases" :key="index">
       <v-row justify="space-between" align="center">
         <v-col cols="auto">
@@ -55,9 +57,11 @@
 <script lang="ts">
 import Vue from 'vue'
 import {marked} from 'marked'
+import ForkChangelog from '@/components/ForkChangelog.vue'
 
 export default Vue.extend({
   name: 'UpdatesView',
+  components: {ForkChangelog},
   data: () => ({
     marked,
   }),
