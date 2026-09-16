@@ -2,6 +2,38 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Fork workflow (read this first)
+
+This checkout is a **maintained fork** of `gotson/komga`. Upstream does not accept pull
+requests, so our changes live here permanently and must survive repeated upstream merges.
+
+| Remote | Points at | Use |
+| --- | --- | --- |
+| `upstream` | `gotson/komga` | Fetch only. Its push URL is intentionally invalid. |
+| `origin` | `ShabbyDog/komga` | Where we push. |
+
+- **`master` is a pristine mirror of `upstream/master`. Never commit to it.** A local
+  `pre-commit` hook blocks commits on `master` (`git commit --no-verify` overrides).
+  Advance it only by fast-forward: `git fetch upstream master:master`.
+- **`fork` is the long-lived work branch** and tracks `origin/fork`. Start feature
+  branches from it (`git switch -c feat/x fork`) and merge them back into it.
+- **Absorb upstream by merging, never rebasing** (`git merge upstream/master`). Our
+  branch is pushed and shared, so history must not be rewritten.
+- `git diff upstream/master fork` should only ever show our own files. If it shows
+  anything else, something leaked in during a merge.
+
+### Checking for upstream drift
+
+```bash
+git upstream-check    # report only; previews the merge without touching the tree
+git upstream-sync     # same, plus fast-forwards the `master` mirror
+```
+
+Both are aliases for `scripts/check-upstream.sh`. It reports how far upstream has moved,
+dry-runs the merge in memory via `git merge-tree`, lists conflicting files, and separately
+flags upstream edits that overlap files we modified — that last list is the real signal.
+Exit codes: `0` up to date, `1` updates available and merge is clean, `2` conflicts.
+
 ## Projects
 
 Komga is a media server for comics/mangas/BDs/eBooks. Four projects, only two are Gradle modules (`settings.gradle` includes `komga` and `komga-tray`; the frontends are built with npm and copied into the backend's resources):
