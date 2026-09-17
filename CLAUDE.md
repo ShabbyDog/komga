@@ -73,6 +73,10 @@ at the release tag and the branch name from `gradle-git-properties`.
   updates screen in both UIs. Single source of truth; edit this file, nothing else.
 - `scripts/` — the two scripts above, plus `.gitattributes` pinning them to LF.
 - `next-ui/.gitattributes` — pins generated files to LF so builds do not dirty the tree.
+- `next-ui/src/utils/i18n/locale-messages.ts` — loads translations via Vite's glob import
+  instead of `vite-plugin-dir2json`, whose Windows paths break `vite build`. Without this
+  `npm run build:with-i18n` cannot produce a bundle on Windows. Re-check this on each
+  upstream release: 1.27.0 reshaped the loading to be lazy and the patch had to follow.
 
 ## Projects
 

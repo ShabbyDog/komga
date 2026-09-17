@@ -1,6 +1,21 @@
 These changes exist only in ShabbyFork and are not part of upstream Komga.
 They are listed newest first, and are included in every build of this fork.
 
+## Build
+
+### Load translations without vite-plugin-dir2json
+
+Upstream loads the compiled translation files through `vite-plugin-dir2json`, which
+writes Windows path separators into the code it generates:
+
+    const __9__json__ = () => import("\src\i18n\uk.json")
+
+`\s` and `\i` are not valid escape sequences, so `vite build` cannot parse it and no
+bundle can be produced on Windows at all.
+
+They are now loaded with Vite's own glob import, which returns the same record of
+lazy import functions without the platform bug. Behaviour is unchanged everywhere.
+
 ## Read list import
 
 ### Rank matches by the issue year from the CBL
