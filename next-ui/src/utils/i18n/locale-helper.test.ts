@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { loadLocale, fallbackLocale, setLocale, getLocale, availableLocales } from './locale-helper'
 
 // mock the available locales, as locales are checked against what's available
-vi.mock('@/i18n?dir2json&ext=.json&lazy', () => {
+vi.mock('./locale-messages', () => {
   return {
     default: {
       en: vi.fn().mockResolvedValue({
