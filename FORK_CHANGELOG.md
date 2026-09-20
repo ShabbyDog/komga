@@ -16,6 +16,25 @@ bundle can be produced on Windows at all.
 They are now loaded with Vite's own glob import, which returns the same record of
 lazy import functions without the platform bug. Behaviour is unchanged everywhere.
 
+## Archive formats
+
+### Support 7z compressed comic books
+
+Komga reads CBZ and CBR, but treated 7z archives as unsupported, so a `.cb7` or a
+comic compressed with 7-Zip could not be read at all.
+
+7z archives are now read like any other comic: `.cb7` and `.7z` files are picked up
+when a library is scanned, and a file compressed with 7-Zip is recognised by its
+content whatever it is named. They can also be converted to CBZ, the same way CBR
+can.
+
+Encrypted 7z archives are reported as unsupported, as encrypted RAR archives already
+were.
+
+Note that 7z archives are usually *solid*, which means a page cannot be read without
+decompressing everything before it. Reading such a comic page by page is noticeably
+slower than CBZ, so converting to CBZ is worth it for anything read often.
+
 ## Read list import
 
 ### Rank matches by the issue year from the CBL
