@@ -43,3 +43,4 @@
 | ERR_1037     | Error while getting EPUB page list                      |
 | ERR_1038     | Error while getting EPUB divina pages                   |
 | ERR_1039     | Error while getting EPUB positions                      |
+| ERR_1040     | Encrypted 7z archives are not supported                 |

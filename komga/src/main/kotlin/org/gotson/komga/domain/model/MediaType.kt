@@ -10,6 +10,7 @@ enum class MediaType(
   RAR_GENERIC("application/x-rar-compressed", MediaProfile.DIVINA, "cbr", "application/vnd.comicbook-rar"),
   RAR_4("application/x-rar-compressed; version=4", MediaProfile.DIVINA, "cbr", "application/vnd.comicbook-rar"),
   RAR_5("application/x-rar-compressed; version=5", MediaProfile.DIVINA, "cbr", "application/vnd.comicbook-rar"),
+  SEVENZIP("application/x-7z-compressed", MediaProfile.DIVINA, "cb7"),
   EPUB("application/epub+zip", MediaProfile.EPUB, "epub"),
   PDF("application/pdf", MediaProfile.PDF, "pdf"),
   ;

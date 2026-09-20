@@ -82,11 +82,22 @@ class BookAnalyzerTest(
     @ParameterizedTest
     @ValueSource(
       strings = [
-        "7zip.7z", "7zip-encrypted.7z",
+        "7zip.7z", "7zip-solid-multi.7z",
       ],
     )
-    fun `given 7zip archive when analyzing then media status is UNSUPPORTED`(fileName: String) {
+    fun `given 7zip archive when analyzing then media status is READY`(fileName: String) {
       val file = ClassPathResource("archives/$fileName")
+      val book = Book("book", file.url, LocalDateTime.now())
+
+      val media = bookAnalyzer.analyze(book, false)
+
+      assertThat(media.mediaType).isEqualTo("application/x-7z-compressed")
+      assertThat(media.status).isEqualTo(Media.Status.READY)
+    }
+
+    @Test
+    fun `given 7zip encrypted archive when analyzing then media status is UNSUPPORTED`() {
+      val file = ClassPathResource("archives/7zip-encrypted.7z")
       val book = Book("book", file.url, LocalDateTime.now())
 
       val media = bookAnalyzer.analyze(book, false)
