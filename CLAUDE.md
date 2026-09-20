@@ -64,8 +64,11 @@ cd ../next-ui   && npm ci && npm run build:with-i18n
 cd .. && ./gradlew :komga:webuiCopyIndex :komga:nextuiCopyIndex :komga:bootJar
 ```
 
-The jar reports `v<version>-ShabbyFork`, where the version comes from `gradle.properties`
-at the release tag and the branch name from `gradle-git-properties`.
+The runnable jar is `komga/build/libs/komga-<version>-ShabbyFork.jar` (the `ShabbyFork`
+suffix is a `bootJar` archive classifier, set in `komga/build.gradle.kts`), and it reports
+`v<version>-ShabbyFork`, where the version comes from `gradle.properties` at the release tag
+and the branch name from `gradle-git-properties`. Note the classifier means the jar no longer
+sits at the path upstream's jreleaser config expects; we do not run jreleaser.
 
 ### Fork-only additions
 
