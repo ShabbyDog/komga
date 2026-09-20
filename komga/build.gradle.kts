@@ -407,6 +407,13 @@ configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
   }
 }
 
+// ShabbyFork: name the runnable jar komga-<version>-ShabbyFork.jar, so a fork build is never
+// mistaken for an upstream one. A classifier is used rather than changing the project version,
+// because the version is what the updates screen compares against upstream's release tags.
+tasks.bootJar {
+  archiveClassifier.set("ShabbyFork")
+}
+
 project.afterEvaluate {
   tasks.named("forkedSpringBootRun") {
     mustRunAfter(tasks.bootJar)
