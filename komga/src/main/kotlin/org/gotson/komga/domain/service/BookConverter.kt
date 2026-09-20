@@ -49,10 +49,10 @@ class BookConverter(
   private val eventPublisher: ApplicationEventPublisher,
   private val historicalEventRepository: HistoricalEventRepository,
 ) {
-  private val convertibleTypes = listOf(MediaType.RAR_4.type, MediaType.RAR_5.type)
+  private val convertibleTypes = listOf(MediaType.RAR_4.type, MediaType.RAR_5.type, MediaType.SEVENZIP.type)
 
   private val mediaTypeToExtension =
-    listOf(MediaType.RAR_4, MediaType.RAR_5, MediaType.ZIP, MediaType.PDF, MediaType.EPUB)
+    listOf(MediaType.RAR_4, MediaType.RAR_5, MediaType.SEVENZIP, MediaType.ZIP, MediaType.PDF, MediaType.EPUB)
       .associate { it.type to it.fileExtension }
 
   private val failedConversions = mutableListOf<String>()

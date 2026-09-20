@@ -56,7 +56,7 @@ class FileSystemScanner(
   ): ScanResult {
     val scanForExtensions =
       buildList {
-        if (scanCbx) addAll(listOf("cbz", "zip", "cbr", "rar"))
+        if (scanCbx) addAll(listOf("cbz", "zip", "cbr", "rar", "cb7", "7z"))
         if (scanPdf) add("pdf")
         if (scanEpub) add("epub")
       }
