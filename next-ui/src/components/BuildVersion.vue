@@ -13,7 +13,7 @@
       class="text-body-small"
       to="/server/updates"
     >
-      {{ buildVersion || $formatMessage(commonMessages.error) }}
+      {{ displayVersion || $formatMessage(commonMessages.error) }}
     </v-btn>
   </v-badge>
 </template>
@@ -21,6 +21,9 @@
 <script setup lang="ts">
 import { commonMessages } from '@/utils/i18n/common-messages'
 import { useAppReleasesEnriched } from '@/composables/app-releases'
+import { useActuatorInfo } from '@/colada/actuator-info'
 
-const { buildVersion, isLatestVersion, isLoading } = useAppReleasesEnriched()
+const { isLatestVersion, isLoading } = useAppReleasesEnriched()
+// ShabbyFork: the displayed version carries the fork build number
+const { displayVersion } = useActuatorInfo()
 </script>
