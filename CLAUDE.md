@@ -40,6 +40,10 @@ exists, `2` rebase stopped on conflicts, `3` error.
 
 After it succeeds: `git push --force-with-lease origin ShabbyFork`.
 
+The fork build number restarts at `build1` on the new release, because it is derived from the
+`<version>-ShabbyFork-build<n>` tags of the version being built. Tag the first jar you build on
+it, as always.
+
 ### Early warning about the next release
 
 ```bash
@@ -64,16 +68,40 @@ cd ../next-ui   && npm ci && npm run build:with-i18n
 cd .. && ./gradlew :komga:webuiCopyIndex :komga:nextuiCopyIndex :komga:bootJar
 ```
 
-The runnable jar is `komga/build/libs/komga-<version>-ShabbyFork.jar` (the `ShabbyFork`
-suffix is a `bootJar` archive classifier, set in `komga/build.gradle.kts`), and it reports
-`v<version>-ShabbyFork`, where the version comes from `gradle.properties` at the release tag
-and the branch name from `gradle-git-properties`. Note the classifier means the jar no longer
-sits at the path upstream's jreleaser config expects; we do not run jreleaser.
+The runnable jar is `komga/build/libs/komga-<version>-ShabbyFork-build<n>.jar` (the
+`ShabbyFork-build<n>` suffix is a `bootJar` archive classifier, set in `komga/build.gradle.kts`),
+and it reports `v<version>-ShabbyFork-build<n>`, where the version comes from `gradle.properties`
+at the release tag and the branch name from `gradle-git-properties`. Note the classifier means
+the jar no longer sits at the path upstream's jreleaser config expects; we do not run jreleaser.
+
+`<n>` is the fork build number, which separates several builds made against the same upstream
+release. It is derived from the fork release tags for the current version: the highest existing
+`<version>-ShabbyFork-build<n>` tag plus one, falling back to 1.
+
+**Always tag a jar as soon as you build one you intend to keep.** Tagging is the only thing that
+advances the number, so an untagged build hands the same `<n>` to the next one and two different
+jars end up with the same name — exactly the confusion the number exists to prevent:
+
+```bash
+git tag -a 1.27.1-ShabbyFork-build1 -m 'ShabbyFork build 1 on Komga 1.27.1'
+```
+
+The tag pattern is scoped to the upstream version, so **a new upstream release starts again at
+`build1`** on its first build. There is no counter to reset by hand: once `ShabbyFork` is rebased
+onto, say, 1.28.0, no `1.28.0-ShabbyFork-build*` tag exists yet, so the next jar is
+`komga-1.28.0-ShabbyFork-build1.jar`.
+
+The number is also published through `/actuator/info` as `build.forkBuild` (added to `buildInfo`
+in `komga/build.gradle.kts`), which is what both UIs render next to the version. The project
+version itself is deliberately left bare, because it is what the updates screen compares against
+upstream's release tags.
 
 ### Fork-only additions
 
 - `FORK_CHANGELOG.md` — the fork's changelog, rendered above the upstream releases on the
-  updates screen in both UIs. Single source of truth; edit this file, nothing else.
+  updates screen in both UIs. Single source of truth; edit this file, nothing else. Each entry
+  carries an `*Added in <version>-ShabbyFork-build<n>.*` line under its heading, recording the
+  build it first shipped in; add one when you add an entry.
 - `scripts/` — the two scripts above, plus `.gitattributes` pinning them to LF.
 - `next-ui/.gitattributes` — pins generated files to LF so builds do not dirty the tree.
 - `next-ui/src/utils/i18n/locale-messages.ts` — loads translations via Vite's glob import

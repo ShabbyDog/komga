@@ -18,5 +18,7 @@ interface ActuatorBuild {
   artifact: string,
   name: string,
   group: string,
-  time: Date
+  time: Date,
+  // ShabbyFork: the fork build number, absent on an upstream build
+  forkBuild?: string
 }
