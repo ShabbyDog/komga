@@ -364,7 +364,7 @@
             color="warning"
           >
             <router-link :to="{name: 'updates'}" class="link-none">
-              v{{ $store.state.actuatorInfo.build.version }}-{{ $store.state.actuatorInfo.git.branch }}
+              v{{ $store.state.actuatorInfo.build.version }}-{{ $store.state.actuatorInfo.git.branch }}{{ $store.state.actuatorInfo.build.forkBuild ? '-build' + $store.state.actuatorInfo.build.forkBuild : '' }}
             </router-link>
           </v-badge>
         </div>

@@ -1,9 +1,33 @@
 These changes exist only in ShabbyFork and are not part of upstream Komga.
 They are listed newest first, and are included in every build of this fork.
 
+Each entry records the fork build it first shipped in. A fork build is named
+`<upstream version>-ShabbyFork-build<n>`, so several builds made against the same
+upstream release can be told apart. Builds made before the numbering was introduced
+are named `<upstream version>-ShabbyFork`, with no number.
+
 ## Build
 
+### Number each fork build
+
+*Added in 1.27.1-ShabbyFork-build1.*
+
+A fork build was named after the upstream release it was built on and nothing else, so two
+builds made against the same upstream release had the same name. Once downloaded or deployed
+there was no way to tell which was which.
+
+The runnable jar is now `komga-<version>-ShabbyFork-build<n>.jar`, and the version shown in
+the UI carries the same suffix, so the build a server is running is visible without going
+back to the file it was started from.
+
+The number comes from the fork release tags that already exist for that upstream version: the
+highest `-build<n>` plus one. Tagging a release is what advances it, so rebuilding a release
+that has not been tagged yet keeps the number it already has. Because the tags are scoped to the
+upstream version, the first build on a new upstream release starts again at `build1`.
+
 ### Load translations without vite-plugin-dir2json
+
+*Added in 1.27.0-ShabbyFork.*
 
 Upstream loads the compiled translation files through `vite-plugin-dir2json`, which
 writes Windows path separators into the code it generates:
@@ -19,6 +43,8 @@ lazy import functions without the platform bug. Behaviour is unchanged everywher
 ## Archive formats
 
 ### Support 7z compressed comic books
+
+*Added in 1.27.0-ShabbyFork.*
 
 Komga reads CBZ and CBR, but treated 7z archives as unsupported, so a `.cb7` or a
 comic compressed with 7-Zip could not be read at all.
@@ -39,6 +65,8 @@ slower than CBZ, so converting to CBZ is worth it for anything read often.
 
 ### Rank matches by the issue year from the CBL
 
+*Added in 1.27.0-ShabbyFork.*
+
 A book in a ComicRack reading list also carries the year the issue itself was
 released, in the `Year` element. It was parsed but never read, so books sharing
 a number within a series came back in no particular order, and a list that omits
@@ -56,6 +84,8 @@ A request with neither year is returned untouched, and so is a match that no yea
 can corroborate. Sorting is stable and no match is removed.
 
 ### Rank matches by the series year from the CBL
+
+*Added in 1.27.0-ShabbyFork.*
 
 A book in a ComicRack reading list carries the year its series started, in the
 `Volume` element. The generated request looks for both the plain series name and
