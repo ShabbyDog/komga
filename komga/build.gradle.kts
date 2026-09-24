@@ -247,6 +247,31 @@ tasks {
   }
 }
 
+// ShabbyFork: the build number that tells apart several fork builds of the same upstream
+// release. It is derived from the fork release tags that already exist for this version -- the
+// highest `-build<n>` plus one -- so tagging a release is what advances the number, and
+// rebuilding a release that has not been tagged yet keeps the number it already has.
+val forkBuildNumber: Int by lazy {
+  val tags =
+    runCatching {
+      val process =
+        ProcessBuilder("git", "tag", "-l", "$version-ShabbyFork-build*")
+          .directory(rootDir)
+          .redirectErrorStream(true)
+          .start()
+      val output = process.inputStream.bufferedReader().use { it.readText() }
+      if (process.waitFor() == 0) output else ""
+    }.getOrDefault("")
+
+  val highest =
+    tags
+      .lineSequence()
+      .mapNotNull { it.trim().substringAfterLast("-build", "").toIntOrNull() }
+      .maxOrNull() ?: 0
+
+  highest + 1
+}
+
 springBoot {
   buildInfo {
     // prevent task bootBuildInfo to rerun every time
@@ -254,6 +279,8 @@ springBoot {
     properties {
       // but rerun if the gradle.properties file changed
       inputs.file("$rootDir/gradle.properties")
+      // ShabbyFork: surfaced by /actuator/info, so both UIs can show the running fork build
+      additional.put("forkBuild", forkBuildNumber.toString())
     }
   }
 }
@@ -407,11 +434,12 @@ configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
   }
 }
 
-// ShabbyFork: name the runnable jar komga-<version>-ShabbyFork.jar, so a fork build is never
-// mistaken for an upstream one. A classifier is used rather than changing the project version,
-// because the version is what the updates screen compares against upstream's release tags.
+// ShabbyFork: name the runnable jar komga-<version>-ShabbyFork-build<n>.jar, so a fork build is
+// never mistaken for an upstream one, and two fork builds of the same upstream release can be
+// told apart. A classifier is used rather than changing the project version, because the version
+// is what the updates screen compares against upstream's release tags.
 tasks.bootJar {
-  archiveClassifier.set("ShabbyFork")
+  archiveClassifier.set("ShabbyFork-build$forkBuildNumber")
 }
 
 project.afterEvaluate {
