@@ -96,6 +96,53 @@ in `komga/build.gradle.kts`), which is what both UIs render next to the version.
 version itself is deliberately left bare, because it is what the updates screen compares against
 upstream's release tags.
 
+### Test on Windows and Linux before every build
+
+**Every jar is tested on both platforms before it ships.** This Windows machine can do both,
+so there is no reason to skip Linux: production runs Linux, and the GitHub Actions that used
+to cover it are disabled (see below). macOS is covered by neither.
+
+```bash
+# Windows
+./gradlew :komga:test ktlintCheck
+
+# Linux, from the same checkout, via WSL
+git archive --format=tar HEAD | wsl -d Ubuntu -- bash -lc 'rm -rf ~/komga-linux && mkdir -p ~/komga-linux && tar x -C ~/komga-linux'
+wsl -d Ubuntu -- bash -lc 'cd ~/komga-linux && sed -i "s/\r$//" gradlew && git init -q && git add -A && git -c user.email=t@t.local -c user.name=wsl commit -qm snapshot'
+wsl -d Ubuntu -- bash -lc 'cd ~/komga-linux && JAVA_HOME=$HOME/jdk21 PATH=$HOME/jdk21/bin:$PATH ./gradlew :komga:test ktlintCheck --console=plain'
+```
+
+The WSL side needs JDK 21+. `~/jdk21` is a Temurin tarball extracted by hand — no root, no
+apt. Three things that otherwise waste an hour:
+
+- `gradlew` arrives with CRLF from the Windows checkout and dies with
+  `bad interpreter: /bin/sh^M`. Strip it: `sed -i 's/\r$//' gradlew`.
+- `git archive` carries no `.git`, and `gradle-git-properties` refuses to run without one.
+  A throwaway `git init` plus one commit is enough.
+- Build **inside the Linux filesystem, never `/mnt/c`**. The two platforms would share one
+  `build/` directory, and inotify does not fire reliably on `/mnt/c`, so
+  `LibraryFileWatcherTest` would report nonsense there.
+
+### Upstream's GitHub Actions are disabled
+
+The fork inherits upstream's workflows, and several of them talk to upstream's own
+infrastructure. They are disabled **as repo state, not by editing the files** (`gh workflow
+disable <id>`), so nothing is added to the fork diff and nothing conflicts on rebase.
+
+Disabled: Discord announce release, Dispatch events (sends `repository_dispatch` to
+`gotson/komga-website`), Update DockerHub description, Chromatic, Chromatic for pull
+requests, Release, Test Komga, Test NextUI, Test WebUI, Validate NextUI i18n.
+
+Still active, because they only touch this fork: Lock threads, Update Browserslist database.
+
+```bash
+gh workflow list --repo ShabbyDog/komga --all      # check state
+gh workflow enable <id> --repo ShabbyDog/komga     # undo
+```
+
+**Re-check this list after each upstream release**: a workflow file that upstream adds
+arrives enabled by default, and the disable only applies to workflows that already existed.
+
 ### Fork-only additions
 
 - `FORK_CHANGELOG.md` — the fork's changelog, rendered above the upstream releases on the
