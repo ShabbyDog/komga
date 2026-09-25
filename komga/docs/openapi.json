@@ -23,11 +23,11 @@
       "description": "Local development server",
       "variables": {
         "port": {
+          "default": "25600",
           "enum": [
             "8080",
             "25600"
-          ],
-          "default": "25600"
+          ]
         }
       }
     }
@@ -11114,6 +11114,9 @@
               "WEEKLY"
             ]
           },
+          "scanOnFilesystemChange": {
+            "type": "boolean"
+          },
           "scanOnStartup": {
             "type": "boolean"
           },
@@ -11155,6 +11158,7 @@
           "scanEpub",
           "scanForceModifiedTime",
           "scanInterval",
+          "scanOnFilesystemChange",
           "scanOnStartup",
           "scanPdf",
           "seriesCover"
@@ -11253,6 +11257,9 @@
               "WEEKLY"
             ]
           },
+          "scanOnFilesystemChange": {
+            "type": "boolean"
+          },
           "scanOnStartup": {
             "type": "boolean"
           },
@@ -11298,6 +11305,7 @@
           "scanEpub",
           "scanForceModifiedTime",
           "scanInterval",
+          "scanOnFilesystemChange",
           "scanOnStartup",
           "scanPdf",
           "seriesCover",
@@ -11394,6 +11402,9 @@
               "DAILY",
               "WEEKLY"
             ]
+          },
+          "scanOnFilesystemChange": {
+            "type": "boolean"
           },
           "scanOnStartup": {
             "type": "boolean"
@@ -12632,6 +12643,10 @@
           },
           "number": {
             "type": "string"
+          },
+          "releaseDate": {
+            "type": "string",
+            "format": "date"
           },
           "title": {
             "type": "string"

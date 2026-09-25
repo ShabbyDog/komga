@@ -323,6 +323,7 @@ export const vReadListRequestBookDto = v.object({
 export const vReadListRequestBookMatchBookDto = v.object({
     bookId: v.string(),
     number: v.string(),
+    releaseDate: v.optional(v.pipe(v.string(), v.isoDate(), v.transform((val: string): Date => new Date(val)))),
     title: v.string()
 });
 
@@ -1270,6 +1271,7 @@ export const vLibraryCreationDto = v.object({
     scanEpub: v.boolean(),
     scanForceModifiedTime: v.boolean(),
     scanInterval: vScanIntervalEnum,
+    scanOnFilesystemChange: v.boolean(),
     scanOnStartup: v.boolean(),
     scanPdf: v.boolean(),
     seriesCover: vSeriesCoverEnum
@@ -1302,6 +1304,7 @@ export const vLibraryDto = v.object({
     scanEpub: v.boolean(),
     scanForceModifiedTime: v.boolean(),
     scanInterval: vScanIntervalEnum,
+    scanOnFilesystemChange: v.boolean(),
     scanOnStartup: v.boolean(),
     scanPdf: v.boolean(),
     seriesCover: vSeriesCoverEnum,
@@ -1337,6 +1340,7 @@ export const vLibraryUpdateDto = v.object({
     scanEpub: v.optional(v.boolean()),
     scanForceModifiedTime: v.optional(v.boolean()),
     scanInterval: v.optional(vScanIntervalEnum),
+    scanOnFilesystemChange: v.optional(v.boolean()),
     scanOnStartup: v.optional(v.boolean()),
     scanPdf: v.optional(v.boolean()),
     seriesCover: v.optional(vSeriesCoverEnum)

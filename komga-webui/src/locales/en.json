@@ -483,6 +483,7 @@
       "field_scan_interval": "Scan interval",
       "field_scanner_empty_trash_after_scan": "Empty trash automatically after every scan",
       "field_scanner_force_directory_modified_time": "Force directory modified time",
+      "field_scanner_scan_filesystem_change": "Scan when the files change",
       "field_scanner_scan_startup": "Scan on startup",
       "field_series_cover": "Series cover",
       "file_browser_dialog_button_confirm": "Choose",
@@ -503,6 +504,7 @@
       "tab_options": "Options",
       "tooltip_oneshotsdirectory": "Leave empty to disable",
       "tooltip_scanner_force_modified_time": "Enable if the library is on a Google Drive",
+      "tooltip_scanner_scan_filesystem_change": "Watch the library folder and scan about a minute after the last change. Useful for a library you add to often, and it works alongside the scan interval.",
       "tooltip_use_resources": "Can consume lots of resources on large libraries or slow hardware"
     },
     "edit_readlist": {
