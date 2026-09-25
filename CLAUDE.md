@@ -181,14 +181,14 @@ npm run test:unit      # vitest, `unit` project
 npm run test:storybook # vitest, `storybook` project (needs playwright)
 npm run lint:fix / prettier:fix / type-check
 npm run openapi-ts     # regenerate the typed API client from ../komga/docs/openapi.json
-npm run i18n:extract   # extract messages into ./i18n (what Weblate consumes)
-npm run i18n:compile   # compile ./i18n into ./src/i18n (what the app loads)
+npm run formatjs:extract  # extract messages into ./i18n (what Weblate consumes)
+npm run i18n:compile      # compile ./i18n into ./src/i18n (what the app loads)
 npm run storybook:dev
 ```
 
 - API access goes through the Hey API generated client in `src/generated/openapi` (do not edit; regenerate with `openapi-ts` after `generateOpenApiDocs`) wrapped by Pinia Colada queries/mutations in `src/colada`.
 - `src/pages` are file-based routes (each has a `<route>` block for layout/meta), `src/layouts` wrap them, `src/components` are pure UI. Components and common APIs are auto-imported (`components.d.ts`, `auto-imports.d.ts` are generated).
-- i18n is FormatJS with **auto-generated message IDs** — never hard-code an ID. CI fails if `i18n:extract` produces a diff, so run it when you touch messages.
+- i18n is FormatJS with **auto-generated message IDs** — never hard-code an ID. Write the message with only `description` and `defaultMessage`; `npm run lint:fix` fills in the `id` via the `formatjs/enforce-id` ESLint rule. Then run `npm run formatjs:extract` (there is no `i18n:extract` script), because CI fails if extracting produces a diff.
 - Icons come from UnoCSS's icon preset (MDI/Tabler via Iconify), not a font.
 - MSW mocks the Komga API for tests and Storybook.
 - Vite does not type-check; run `type-check` separately.
