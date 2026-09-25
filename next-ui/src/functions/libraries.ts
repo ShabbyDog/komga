@@ -28,6 +28,7 @@ export function getLibraryDefaults(): LibraryCreationDto {
     scanEpub: true,
     scanForceModifiedTime: false,
     scanInterval: 'EVERY_6H',
+    scanOnFilesystemChange: false,
     scanOnStartup: false,
     scanPdf: true,
     seriesCover: 'FIRST',
