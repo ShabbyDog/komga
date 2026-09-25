@@ -143,6 +143,34 @@
           "
           hide-details
         />
+
+        <v-checkbox
+          v-model="model.scanOnFilesystemChange"
+          :label="
+            $formatMessage({
+              description: 'Form add/edit library: Scanner - scan on filesystem change',
+              defaultMessage: 'Scan when the files change',
+              id: 'gYBIB6',
+            })
+          "
+          hide-details
+        >
+          <template #append>
+            <v-icon
+              v-tooltip="{
+                text: $formatMessage({
+                  description: 'Form add/edit library: Scanner - scan on filesystem change - help',
+                  defaultMessage:
+                    'Watch the library folder and scan about a minute after the last change. Useful for a library you add to often, and it works alongside the scan interval.',
+                  id: 'MKNqut',
+                }),
+                openOnClick: true,
+                clickFade: 2500,
+              }"
+              icon="i-mdi:information-outline"
+            ></v-icon>
+          </template>
+        </v-checkbox>
       </v-col>
     </v-row>
   </v-container>
@@ -164,6 +192,7 @@ type LibraryCreationScanner = Pick<
   | 'emptyTrashAfterScan'
   | 'scanForceModifiedTime'
   | 'scanOnStartup'
+  | 'scanOnFilesystemChange'
 >
 
 const model = defineModel<LibraryCreationScanner>({ required: true })
