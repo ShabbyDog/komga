@@ -262,6 +262,13 @@ export const createReadListResponseTransformer = async (data: any): Promise<Crea
     return data;
 };
 
+const readListRequestBookMatchBookDtoSchemaResponseTransformer = (data: any) => {
+    if (data.releaseDate) {
+        data.releaseDate = new Date(data.releaseDate);
+    }
+    return data;
+};
+
 const readListRequestBookMatchSeriesDtoSchemaResponseTransformer = (data: any) => {
     if (data.releaseDate) {
         data.releaseDate = new Date(data.releaseDate);
@@ -270,6 +277,7 @@ const readListRequestBookMatchSeriesDtoSchemaResponseTransformer = (data: any) =
 };
 
 const readListRequestBookMatchDtoSchemaResponseTransformer = (data: any) => {
+    data.books = data.books.map((item: any) => readListRequestBookMatchBookDtoSchemaResponseTransformer(item));
     data.series = readListRequestBookMatchSeriesDtoSchemaResponseTransformer(data.series);
     return data;
 };

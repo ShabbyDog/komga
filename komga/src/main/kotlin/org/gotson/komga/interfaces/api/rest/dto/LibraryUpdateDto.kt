@@ -28,6 +28,7 @@ class LibraryUpdateDto {
   val scanForceModifiedTime: Boolean? = null
   val scanInterval: ScanIntervalDto? = null
   val scanOnStartup: Boolean? = null
+  val scanOnFilesystemChange: Boolean? = null
   val scanCbx: Boolean? = null
   val scanPdf: Boolean? = null
   val scanEpub: Boolean? = null

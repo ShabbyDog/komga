@@ -327,6 +327,7 @@ export type LibraryCreationDto = {
     scanEpub: boolean;
     scanForceModifiedTime: boolean;
     scanInterval: ScanIntervalEnum;
+    scanOnFilesystemChange: boolean;
     scanOnStartup: boolean;
     scanPdf: boolean;
     seriesCover: SeriesCoverEnum;
@@ -359,6 +360,7 @@ export type LibraryDto = {
     scanEpub: boolean;
     scanForceModifiedTime: boolean;
     scanInterval: ScanIntervalEnum;
+    scanOnFilesystemChange: boolean;
     scanOnStartup: boolean;
     scanPdf: boolean;
     seriesCover: SeriesCoverEnum;
@@ -394,6 +396,7 @@ export type LibraryUpdateDto = {
     scanEpub?: boolean;
     scanForceModifiedTime?: boolean;
     scanInterval?: ScanIntervalEnum;
+    scanOnFilesystemChange?: boolean;
     scanOnStartup?: boolean;
     scanPdf?: boolean;
     seriesCover?: SeriesCoverEnum;
@@ -719,6 +722,7 @@ export type ReadListRequestBookDto = {
 export type ReadListRequestBookMatchBookDto = {
     bookId: string;
     number: string;
+    releaseDate?: Date;
     title: string;
 };
 

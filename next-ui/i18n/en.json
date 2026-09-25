@@ -1015,6 +1015,10 @@
     "defaultMessage": "Summary from book {number}:",
     "description": "Series view: summary from book label"
   },
+  "MKNqut": {
+    "defaultMessage": "Watch the library folder and scan about a minute after the last change. Useful for a library you add to often, and it works alongside the scan interval.",
+    "description": "Form add/edit library: Scanner - scan on filesystem change - help"
+  },
   "MKs9N+": {
     "defaultMessage": "Overview",
     "description": "Library navigation: overview"
@@ -2282,6 +2286,10 @@
   "gNiEAF": {
     "defaultMessage": "Comment",
     "description": "API Key table header: key comment"
+  },
+  "gYBIB6": {
+    "defaultMessage": "Scan when the files change",
+    "description": "Form add/edit library: Scanner - scan on filesystem change"
   },
   "ggaOkE": {
     "defaultMessage": "No data found",

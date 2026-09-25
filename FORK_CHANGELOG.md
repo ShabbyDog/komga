@@ -6,6 +6,37 @@ Each entry records the fork build it first shipped in. A fork build is named
 upstream release can be told apart. Builds made before the numbering was introduced
 are named `<upstream version>-ShabbyFork`, with no number.
 
+## Scanning
+
+### Scan a library when its files change
+
+*Added in 1.27.1-ShabbyFork-build1.*
+
+A library was only scanned on a timer, so a comic added just after a scan sat unnoticed until
+the next one came round — up to six hours later on the default interval. Shortening the
+interval only traded that delay for repeated scans of a library that had not changed.
+
+A library can now be told to **scan when the files change**, in the Scanner section of its
+settings. The library folder is watched, and a change anywhere below it schedules a scan.
+
+Watching is done by the platform's own mechanism: FSEvents on macOS, inotify on Linux, and
+ReadDirectoryChangesW on Windows — so no polling, and no cost while nothing is happening.
+
+A scan does not start on the first event. Copying a large comic in produces a steady burst of
+events, and the file is not complete until the burst ends, so each change restarts a one minute
+countdown and only the quiet at the end triggers the scan. Copying a batch of files therefore
+costs a single scan rather than one per file.
+
+The option works alongside the scan interval rather than replacing it, so a periodic scan can
+still be kept as a safety net for changes the watcher misses — a network share, for instance,
+where the operating system reports nothing to the machine running Komga.
+
+Two notes for large libraries. On Linux, each watched folder consumes an inotify watch, and a
+library with more folders than `fs.inotify.max_user_watches` allows will fail to watch; the
+limit is raised with `sysctl fs.inotify.max_user_watches`. And if the library also converts to
+CBZ or repairs extensions, the scan changes files itself, which schedules one more scan that
+finds nothing to do.
+
 ## Build
 
 ### Number each fork build

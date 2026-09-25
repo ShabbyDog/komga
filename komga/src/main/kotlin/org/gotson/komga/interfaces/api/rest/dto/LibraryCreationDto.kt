@@ -18,6 +18,7 @@ data class LibraryCreationDto(
   val scanForceModifiedTime: Boolean = false,
   val scanInterval: ScanIntervalDto = ScanIntervalDto.EVERY_6H,
   val scanOnStartup: Boolean = false,
+  val scanOnFilesystemChange: Boolean = false,
   val scanCbx: Boolean = true,
   val scanPdf: Boolean = true,
   val scanEpub: Boolean = true,

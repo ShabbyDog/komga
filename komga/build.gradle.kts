@@ -84,6 +84,10 @@ dependencies {
   implementation("org.apache.commons:commons-lang3:3.20.0")
   implementation("commons-validator:commons-validator:1.11.0")
 
+  // ShabbyFork: filesystem watching for scan-on-change. Uses native FSEvents on macOS, and the
+  // JDK WatchService -- inotify on Linux, ReadDirectoryChangesW on Windows -- everywhere else.
+  implementation("io.methvin:directory-watcher:0.18.0")
+
   implementation("org.apache.lucene:lucene-core:${libs.versions.lucene.get()}")
   implementation("org.apache.lucene:lucene-analysis-common:${libs.versions.lucene.get()}")
   implementation("org.apache.lucene:lucene-queryparser:${libs.versions.lucene.get()}")
