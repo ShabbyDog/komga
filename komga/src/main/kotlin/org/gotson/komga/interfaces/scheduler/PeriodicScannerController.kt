@@ -1,6 +1,7 @@
 package org.gotson.komga.interfaces.scheduler
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.gotson.komga.application.scheduler.LibraryFileWatcher
 import org.gotson.komga.application.scheduler.LibraryScanScheduler
 import org.gotson.komga.application.tasks.TaskEmitter
 import org.gotson.komga.domain.persistence.LibraryRepository
@@ -17,6 +18,7 @@ class PeriodicScannerController(
   private val taskEmitter: TaskEmitter,
   private val libraryRepository: LibraryRepository,
   private val libraryScanScheduler: LibraryScanScheduler,
+  private val libraryFileWatcher: LibraryFileWatcher,
 ) {
   @EventListener(classes = [ApplicationReadyEvent::class])
   fun scanOnStartup() {
@@ -34,5 +36,14 @@ class PeriodicScannerController(
     libraryRepository
       .findAll()
       .forEach { libraryScanScheduler.scheduleScan(it) }
+  }
+
+  // ShabbyFork: start watching the libraries that scan on filesystem change
+  @EventListener(classes = [ApplicationReadyEvent::class])
+  fun watchLibraries() {
+    libraryRepository
+      .findAll()
+      .filter { it.scanOnFilesystemChange }
+      .forEach { libraryFileWatcher.watchLibrary(it) }
   }
 }
