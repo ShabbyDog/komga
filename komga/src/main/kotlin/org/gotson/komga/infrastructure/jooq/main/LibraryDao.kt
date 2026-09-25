@@ -101,6 +101,7 @@ class LibraryDao(
       .set(l.SCAN_PDF, library.scanPdf)
       .set(l.SCAN_EPUB, library.scanEpub)
       .set(l.SCAN_STARTUP, library.scanOnStartup)
+      .set(l.SCAN_FS_CHANGE, library.scanOnFilesystemChange)
       .set(l.SCAN_INTERVAL, library.scanInterval.toString())
       .set(l.REPAIR_EXTENSIONS, library.repairExtensions)
       .set(l.CONVERT_TO_CBZ, library.convertToCbz)
@@ -138,6 +139,7 @@ class LibraryDao(
       .set(l.SCAN_PDF, library.scanPdf)
       .set(l.SCAN_EPUB, library.scanEpub)
       .set(l.SCAN_STARTUP, library.scanOnStartup)
+      .set(l.SCAN_FS_CHANGE, library.scanOnFilesystemChange)
       .set(l.SCAN_INTERVAL, library.scanInterval.toString())
       .set(l.REPAIR_EXTENSIONS, library.repairExtensions)
       .set(l.CONVERT_TO_CBZ, library.convertToCbz)
@@ -193,6 +195,7 @@ class LibraryDao(
       scanPdf = scanPdf,
       scanEpub = scanEpub,
       scanOnStartup = scanStartup,
+      scanOnFilesystemChange = scanFsChange,
       scanInterval = Library.ScanInterval.valueOf(scanInterval),
       scanDirectoryExclusions = directoryExclusions,
       repairExtensions = repairExtensions,
