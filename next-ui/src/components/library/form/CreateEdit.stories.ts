@@ -60,6 +60,7 @@ export const Edit: Story = {
       scanEpub: true,
       scanForceModifiedTime: false,
       scanInterval: 'DAILY',
+      scanOnFilesystemChange: false,
       scanOnStartup: false,
       scanPdf: true,
       seriesCover: 'FIRST',
