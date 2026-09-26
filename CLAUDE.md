@@ -294,6 +294,17 @@ npm run lint
 
 Prefer `next-ui` for new frontend features; touch `komga-webui` only for fixes to the legacy UI.
 
+**The type check does not run, and has not for a long time.** `vue-cli-service build` hands
+type checking to a worker that `fork-ts-checker-webpack-plugin` forks with
+`--max-old-space-size=<memoryLimit>`; that worker exhausts its heap and is killed, webpack then
+prints `DONE` and exits 0, so the bundle ships with nothing checked. Measured on 2026-09-26, on
+Windows and on the Linux server alike: it dies at ~4 GB by default, and raising `memoryLimit`
+to 8192 in `vue.config.js` only moves the ceiling -- it dies at ~8.2 GB instead. `NODE_OPTIONS`
+is not a lever: the plugin's flag is on the worker's command line and beats the environment.
+`tsconfig.json` is unremarkable (`src` only, `node_modules` excluded), so the appetite is the
+type graph itself. Nothing in the fork changes this; `auto-release.sh` reports it on every build
+and does not block the release on it, since it has never once passed.
+
 ## Conventions
 
 - Commits follow Conventional Commits — versioning, changelog, and releases are automated from them. Allowed types are listed in `conventionalcommit.json` (notably `i18n` and `deps` in addition to the usual set); the scope shows up in the generated changelog.
