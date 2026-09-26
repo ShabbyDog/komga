@@ -45,6 +45,17 @@ load_config() {
   [ -f "$CONF" ] && . "$CONF"
 }
 
+# Komga usually runs as an ordinary user, so the pipeline does too and reaches for sudo only
+# to start and stop the unit. Running the whole thing as root would leave root-owned files in
+# the jar folder and build caches in root's home.
+systemctl_cmd() {
+  if [ "$(id -u)" -eq 0 ]; then
+    systemctl "$@"
+  else
+    sudo -n systemctl "$@"
+  fi
+}
+
 # ---------------------------------------------------------------- notification
 
 # One open issue at a time: a failing run opens or comments on it, a good run closes it, so a
@@ -125,6 +136,14 @@ preflight() {
     log "  ok      $KOMGA_SERVICE"
   else
     log "  FAILED  $KOMGA_SERVICE not found"; ok=1
+  fi
+  if [ "$(id -u)" -eq 0 ]; then
+    log "  ok      running as root"
+  elif sudo -n systemctl show "$KOMGA_SERVICE" >/dev/null 2>&1; then
+    log "  ok      passwordless sudo systemctl"
+  else
+    log "  FAILED  cannot run 'sudo -n systemctl' - see the sudoers line in auto-release.conf.example"
+    ok=1
   fi
   [ -f "$KOMGA_JAR" ] && log "  ok      jar      $KOMGA_JAR" || { log "  FAILED  jar not found: $KOMGA_JAR"; ok=1; }
   [ -w "$(dirname "$KOMGA_JAR")" ] && log "  ok      writable $(dirname "$KOMGA_JAR")" || { log "  FAILED  cannot write $(dirname "$KOMGA_JAR") - run as root?"; ok=1; }
@@ -225,6 +244,32 @@ EOF
 
 # ---------------------------------------------------------------- deploy
 
+# The databases run in WAL mode, so `database.sqlite` is only part of the story. A clean
+# shutdown checkpoints the -wal away, but a stop that times out and gets killed leaves
+# committed transactions in it. Worse, restoring a database while a newer -wal is still lying
+# next to it lets SQLite replay that foreign WAL onto it, so the sidecars have to travel with
+# the database in both directions.
+backup_sqlite() {
+  local dir="$1" name="$2" side
+  [ -f "$KOMGA_CONFIG_DIR/$name" ] || return 0
+  cp -p "$KOMGA_CONFIG_DIR/$name" "$dir/" || return 1
+  for side in -wal -shm; do
+    [ -f "$KOMGA_CONFIG_DIR/$name$side" ] && { cp -p "$KOMGA_CONFIG_DIR/$name$side" "$dir/" || return 1; }
+  done
+  return 0
+}
+
+restore_sqlite() {
+  local dir="$1" name="$2" side
+  [ -f "$dir/$name" ] || return 0
+  rm -f "$KOMGA_CONFIG_DIR/$name-wal" "$KOMGA_CONFIG_DIR/$name-shm"
+  cp -p "$dir/$name" "$KOMGA_CONFIG_DIR/$name" || return 1
+  for side in -wal -shm; do
+    [ -f "$dir/$name$side" ] && { cp -p "$dir/$name$side" "$KOMGA_CONFIG_DIR/$name$side" || return 1; }
+  done
+  return 0
+}
+
 deploy() {
   local jar="$1" stamp backup
   stamp=$(date +%Y%m%d-%H%M%S)
@@ -232,19 +277,22 @@ deploy() {
   mkdir -p "$backup" || return 1
 
   log "Stopping $KOMGA_SERVICE ..."
-  systemctl stop "$KOMGA_SERVICE" || return 1
+  systemctl_cmd stop "$KOMGA_SERVICE" || return 1
 
   # With the service down the SQLite files are quiescent, so a plain copy is consistent.
-  log "Backing up jar and database to $backup ..."
+  log "Backing up jar and databases to $backup ..."
   cp -p "$KOMGA_JAR" "$backup/" || return 1
-  cp -p "$KOMGA_CONFIG_DIR/database.sqlite" "$backup/" || return 1
-  [ -f "$KOMGA_CONFIG_DIR/tasks.sqlite" ] && cp -p "$KOMGA_CONFIG_DIR/tasks.sqlite" "$backup/"
+  backup_sqlite "$backup" database.sqlite || return 1
+  backup_sqlite "$backup" tasks.sqlite || return 1
 
+  # Keep the versioned jar alongside the live one, so the jar folder stays a history of what
+  # has run and a manual rollback is just a copy.
   log "Installing $(basename "$jar") ..."
+  cp -p "$jar" "$(dirname "$KOMGA_JAR")/" || return 1
   cp -p "$jar" "$KOMGA_JAR" || return 1
 
   log "Starting $KOMGA_SERVICE ..."
-  systemctl start "$KOMGA_SERVICE" || { rollback "$backup"; return 2; }
+  systemctl_cmd start "$KOMGA_SERVICE" || { rollback "$backup"; return 2; }
 
   if wait_healthy; then
     log "Healthy."
@@ -270,11 +318,11 @@ wait_healthy() {
 rollback() {
   local backup="$1"
   log "ROLLBACK from $backup"
-  systemctl stop "$KOMGA_SERVICE" 2>/dev/null
+  systemctl_cmd stop "$KOMGA_SERVICE" 2>/dev/null
   cp -p "$backup/$(basename "$KOMGA_JAR")" "$KOMGA_JAR" || log "rollback: could not restore jar"
-  cp -p "$backup/database.sqlite" "$KOMGA_CONFIG_DIR/database.sqlite" || log "rollback: could not restore database"
-  [ -f "$backup/tasks.sqlite" ] && cp -p "$backup/tasks.sqlite" "$KOMGA_CONFIG_DIR/tasks.sqlite"
-  systemctl start "$KOMGA_SERVICE" 2>/dev/null
+  restore_sqlite "$backup" database.sqlite || log "rollback: could not restore database.sqlite"
+  restore_sqlite "$backup" tasks.sqlite || log "rollback: could not restore tasks.sqlite"
+  systemctl_cmd start "$KOMGA_SERVICE" 2>/dev/null
   if wait_healthy; then log "Rolled back and healthy again."; else log "ROLLED BACK BUT STILL UNHEALTHY - needs a human."; fi
 }
 
