@@ -3,8 +3,9 @@
 #
 #   bash scripts/auto-release.sh --preflight  # check the environment, change nothing
 #   bash scripts/auto-release.sh --check      # is there a newer upstream release? change nothing
-#   bash scripts/auto-release.sh --dry-run    # rebase, build and test, but do not tag, push or deploy
-#   bash scripts/auto-release.sh              # the real thing
+#   bash scripts/auto-release.sh --dry-run     # rebase, build and test, but do not tag, push or deploy
+#   bash scripts/auto-release.sh --deploy-only # rehearse stop/backup/start/health on the installed jar
+#   bash scripts/auto-release.sh               # the real thing
 #
 # Exit codes: 0 = nothing to do, or released and deployed
 #             1 = stopped safely before touching anything that matters
@@ -295,10 +296,15 @@ deploy() {
   backup_sqlite "$backup" tasks.sqlite || return 1
 
   # Keep the versioned jar alongside the live one, so the jar folder stays a history of what
-  # has run and a manual rollback is just a copy.
-  log "Installing $(basename "$jar") ..."
-  cp -p "$jar" "$(dirname "$KOMGA_JAR")/" || return 1
-  cp -p "$jar" "$KOMGA_JAR" || return 1
+  # has run and a manual rollback is just a copy. Installing the jar that is already in place is
+  # a no-op rather than an error, which is what lets --deploy-only rehearse this path harmlessly.
+  if [ "$(readlink -f "$jar")" = "$(readlink -f "$KOMGA_JAR")" ]; then
+    log "Installing: $(basename "$jar") is already the jar in place, nothing to copy."
+  else
+    log "Installing $(basename "$jar") ..."
+    cp -p "$jar" "$(dirname "$KOMGA_JAR")/" || return 1
+    cp -p "$jar" "$KOMGA_JAR" || return 1
+  fi
 
   log "Starting $KOMGA_SERVICE ..."
   systemctl_cmd start "$KOMGA_SERVICE" || { rollback "$backup"; return 2; }
@@ -360,10 +366,30 @@ main() {
 
   preflight || die "preflight failed; fix the above first"
 
+  # Exercises the riskiest and least testable part of the pipeline against the jar that is
+  # already installed: a real stop, a real backup, a real start and a real health check, with
+  # nothing actually changed. Worth running once before trusting the timer.
+  if [ "$mode" = "--deploy-only" ]; then
+    log "Deploy rehearsal using the installed jar: $KOMGA_JAR"
+    deploy "$KOMGA_JAR"; rc=$?
+    case "$rc" in
+      0) log "Deploy path is sound: stop, backup, install, start and health check all passed."; exit 0 ;;
+      2) notify_failure "A deploy rehearsal (\`--deploy-only\`) failed its health check and was rolled back. The jar was unchanged, so this points at the service or the health check rather than at a build."; exit 2 ;;
+      *) die "deploy rehearsal failed before it changed anything" ;;
+    esac
+  fi
+
   rebase_onto_latest; rc=$?
   case "$rc" in
     0)  ;;
-    10) exit 0 ;;
+    10)
+      # A dry run is a rehearsal, so it builds and tests even when there is nothing new to take.
+      if [ "$mode" = "--dry-run" ]; then
+        log "Nothing new upstream; rehearsing the build and tests anyway."
+      else
+        exit 0
+      fi
+      ;;
     11) exit 1 ;;
     *)  exit 3 ;;
   esac
