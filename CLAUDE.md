@@ -134,9 +134,15 @@ and kept outside the repo so machine-specific paths never reach the fork diff.
 ```bash
 bash scripts/auto-release.sh --preflight  # check the environment, change nothing
 bash scripts/auto-release.sh --check      # is there a newer upstream release?
-bash scripts/auto-release.sh --dry-run    # rebase, build and test, but do not publish or deploy
-bash scripts/auto-release.sh              # the real thing
+bash scripts/auto-release.sh --dry-run     # rebase, build and test, but do not publish or deploy
+bash scripts/auto-release.sh --deploy-only # rehearse stop/backup/start/health on the installed jar
+bash scripts/auto-release.sh               # the real thing
 ```
+
+Rehearse both halves before trusting the timer. `--dry-run` builds and tests even when there is
+nothing new upstream, so it exercises the build without waiting for a release. `--deploy-only`
+runs the stop, backup, install, start and health check against the jar already installed, which
+proves the deploy path and takes a real backup while changing nothing.
 
 Exit codes: `0` nothing to do or fully succeeded, `1` stopped safely before anything mattered,
 `2` deploy failed and was rolled back, `3` error. Failures open an issue on the fork and a
