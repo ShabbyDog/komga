@@ -1,0 +1,35 @@
+# ShabbyFork: configuration for scripts/auto-release.sh
+#
+# Copy to ~/.config/komga-auto.conf (or point KOMGA_AUTO_CONF at it) and edit. It is kept
+# outside the repository on purpose, so paths specific to one machine never reach the fork
+# diff and never need rebasing.
+#
+#   install -Dm600 scripts/auto-release.conf.example ~/.config/komga-auto.conf
+#   bash scripts/auto-release.sh --preflight
+
+# The systemd unit that runs Komga.
+KOMGA_SERVICE=komga.service
+
+# The jar the unit starts. The pipeline overwrites this file, keeping a copy of the old one.
+KOMGA_JAR=/opt/komga/komga.jar
+
+# Where Komga keeps database.sqlite and tasks.sqlite, i.e. its --komga.config-dir.
+# Backed up before every upgrade, because Flyway migrations cannot be undone.
+KOMGA_CONFIG_DIR=/var/lib/komga
+
+# Used for the post-upgrade health check. Must be reachable from the machine running this.
+KOMGA_URL=http://localhost:25600
+
+# Where jar and database backups are kept, and how many upgrades to keep them for.
+BACKUP_DIR=/var/backups/komga
+KEEP_BACKUPS=3
+
+# Where releases are published and failures are reported as issues.
+GH_REPO=ShabbyDog/komga
+
+# How long to wait for Komga to answer after an upgrade. A large library migrating a new
+# schema can take minutes, so this is deliberately generous.
+HEALTH_TIMEOUT=600
+
+# Title of the issue used to report failures. One is open at a time.
+ISSUE_TITLE='Automated release pipeline failed'
