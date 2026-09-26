@@ -123,6 +123,42 @@ apt. Three things that otherwise waste an hour:
   `build/` directory, and inotify does not fire reliably on `/mnt/c`, so
   `LibraryFileWatcherTest` would report nonsense there.
 
+### Automated releases on the Linux server
+
+`scripts/auto-release.sh` runs the whole chain unattended, on the Linux box that also serves
+production: check upstream, rebase, build, test, tag, publish a GitHub release, then upgrade
+the local service. It is driven by a systemd timer (`scripts/komga-auto-release.timer.example`)
+and configured by `~/.config/komga-auto.conf`, copied from `scripts/auto-release.conf.example`
+and kept outside the repo so machine-specific paths never reach the fork diff.
+
+```bash
+bash scripts/auto-release.sh --preflight  # check the environment, change nothing
+bash scripts/auto-release.sh --check      # is there a newer upstream release?
+bash scripts/auto-release.sh --dry-run    # rebase, build and test, but do not publish or deploy
+bash scripts/auto-release.sh              # the real thing
+```
+
+Exit codes: `0` nothing to do or fully succeeded, `1` stopped safely before anything mattered,
+`2` deploy failed and was rolled back, `3` error. Failures open an issue on the fork and a
+success closes it, so a recurring failure cannot bury its own notifications.
+
+What it refuses to do:
+
+- **Deploy if the rebase conflicted.** `sync-release.sh` leaves the rebase in progress for a
+  human; the pipeline aborts it, leaves the `backup/` branch alone, and stops.
+- **Deploy if the tests fail.** The release is not published either.
+- **Upgrade without a way back.** Komga runs Flyway migrations on startup and Flyway has no
+  undo, so a newer jar moves the database forward permanently. The service is stopped *before*
+  the backup is taken (a copy of a live SQLite file is not guaranteed consistent), and a
+  rollback restores the database as well as the jar.
+
+Two things it cannot do, by construction:
+
+- **It only tests Linux.** The dual-platform rule above still needs a Windows run, which is
+  ours to do when we write a change; the pipeline's job is upstream rebases.
+- **It cannot resolve conflicts or judge upstream's changes.** A release that needs either
+  stops and waits.
+
 ### Upstream's GitHub Actions are disabled
 
 The fork inherits upstream's workflows, and several of them talk to upstream's own
@@ -149,7 +185,8 @@ arrives enabled by default, and the disable only applies to workflows that alrea
   updates screen in both UIs. Single source of truth; edit this file, nothing else. Each entry
   carries an `*Added in <version>-ShabbyFork-build<n>.*` line under its heading, recording the
   build it first shipped in; add one when you add an entry.
-- `scripts/` — the two scripts above, plus `.gitattributes` pinning them to LF.
+- `scripts/` — the sync and drift scripts above, plus `auto-release.sh` (below) and
+  `.gitattributes` pinning them to LF.
 - `next-ui/.gitattributes` — pins generated files to LF so builds do not dirty the tree.
 - `next-ui/src/utils/i18n/locale-messages.ts` — loads translations via Vite's glob import
   instead of `vite-plugin-dir2json`, whose Windows paths break `vite build`. Without this
