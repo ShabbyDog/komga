@@ -6,22 +6,38 @@
 #
 #   install -Dm600 scripts/auto-release.conf.example ~/.config/komga-auto.conf
 #   bash scripts/auto-release.sh --preflight
+#
+# Run the pipeline as the same user Komga runs as, not as root: it keeps the jar folder and
+# the build caches owned by that user. The only thing it needs privileges for is stopping and
+# starting the unit, so give that user a passwordless sudo rule for exactly that, in
+# /etc/sudoers.d/komga-auto (visudo -f /etc/sudoers.d/komga-auto):
+#
+#   cube ALL=(root) NOPASSWD: /bin/systemctl start komga.service, \
+#                             /bin/systemctl stop komga.service, \
+#                             /bin/systemctl show komga.service
+#
+# Check the path first; it is /usr/bin/systemctl on some distributions.
+# Note that `sudo` changes $HOME to /root, so if you do run this with sudo, pass the config
+# explicitly: sudo KOMGA_AUTO_CONF=/home/cube/.config/komga-auto.conf bash scripts/auto-release.sh
 
 # The systemd unit that runs Komga.
 KOMGA_SERVICE=komga.service
 
-# The jar the unit starts. The pipeline overwrites this file, keeping a copy of the old one.
-KOMGA_JAR=/opt/komga/komga.jar
+# The jar the unit starts. The pipeline overwrites this file, and also drops the versioned
+# jar next to it, so the folder keeps a history of what has run.
+KOMGA_JAR=/home/cube/komga/komga.jar
 
 # Where Komga keeps database.sqlite and tasks.sqlite, i.e. its --komga.config-dir.
-# Backed up before every upgrade, because Flyway migrations cannot be undone.
-KOMGA_CONFIG_DIR=/var/lib/komga
+# Backed up before every upgrade, together with the -wal and -shm sidecars, because Flyway
+# migrations cannot be undone and a WAL must never be separated from its database.
+KOMGA_CONFIG_DIR=/home/cube/.komga
 
 # Used for the post-upgrade health check. Must be reachable from the machine running this.
 KOMGA_URL=http://localhost:25600
 
-# Where jar and database backups are kept, and how many upgrades to keep them for.
-BACKUP_DIR=/var/backups/komga
+# Where jar and database backups are kept, and how many upgrades to keep them for. Must be
+# writable by the user running the pipeline.
+BACKUP_DIR=/home/cube/komga/auto-backups
 KEEP_BACKUPS=3
 
 # Where releases are published and failures are reported as issues.
