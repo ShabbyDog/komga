@@ -279,6 +279,15 @@ deploy() {
   log "Stopping $KOMGA_SERVICE ..."
   systemctl_cmd stop "$KOMGA_SERVICE" || return 1
 
+  # A clean stop checkpoints the WAL into the database and removes the sidecars, so normally
+  # there is nothing but database.sqlite to copy. A sidecar still being here means the stop was
+  # cut short by its systemd timeout, which is the one case where copying the database alone
+  # would produce a backup that is not just stale but unreadable.
+  if [ -f "$KOMGA_CONFIG_DIR/database.sqlite-wal" ] || [ -f "$KOMGA_CONFIG_DIR/tasks.sqlite-wal" ]; then
+    log "NOTE: a -wal is still present after stopping $KOMGA_SERVICE, so the shutdown was not clean."
+    log "      Backing the sidecars up with their databases. Consider raising TimeoutStopSec."
+  fi
+
   # With the service down the SQLite files are quiescent, so a plain copy is consistent.
   log "Backing up jar and databases to $backup ..."
   cp -p "$KOMGA_JAR" "$backup/" || return 1
