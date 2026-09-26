@@ -1,0 +1,43 @@
+# ShabbyFork: run the release pipeline on a schedule.
+#
+# Install both units, edit the paths, then enable the timer:
+#
+#   sudo install -m644 scripts/komga-auto-release.service /etc/systemd/system/
+#   sudo install -m644 scripts/komga-auto-release.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now komga-auto-release.timer
+#   systemctl list-timers komga-auto-release.timer
+#
+# The pipeline stops Komga, swaps the jar and starts it again, so it needs the privileges to
+# do that. Running it as root is the simplest arrangement; the alternative is a dedicated user
+# with a sudoers rule for `systemctl {start,stop} komga.service` and write access to the jar.
+
+# ---------- /etc/systemd/system/komga-auto-release.timer ----------
+[Unit]
+Description=Check for a new upstream Komga release, build, release and upgrade
+
+[Timer]
+# Nightly, at a quiet hour, with jitter so it never lands on the same second.
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+
+# ---------- /etc/systemd/system/komga-auto-release.service ----------
+# [Unit]
+# Description=ShabbyFork automated release pipeline
+# After=network-online.target
+# Wants=network-online.target
+#
+# [Service]
+# Type=oneshot
+# User=root
+# WorkingDirectory=/opt/src/komga
+# Environment=KOMGA_AUTO_CONF=/root/.config/komga-auto.conf
+# # Gradle and npm need a writable HOME for their caches.
+# Environment=HOME=/root
+# ExecStart=/bin/bash scripts/auto-release.sh
+# # A build plus a migration on a large library can be slow; do not kill it half way.
+# TimeoutStartSec=3h
