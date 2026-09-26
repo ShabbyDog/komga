@@ -1,1 +1,5 @@
 *.sh text eol=lf
+# Sourced by bash and installed as systemd units on Linux; a CR would end up inside the
+# values (KOMGA_SERVICE=komga.service) or break the unit file.
+*.conf.example text eol=lf
+*.timer.example text eol=lf
