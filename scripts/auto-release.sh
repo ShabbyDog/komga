@@ -66,25 +66,30 @@ open_issue_number() {
     --json number --jq '.[0].number' 2>/dev/null
 }
 
+# Delivery is reported rather than swallowed: a notification channel that has quietly stopped
+# working is worse than none, because the run log then looks like everything was fine.
 notify_failure() {
-  local body="$1" num
+  local body="$1" num out
   log "NOTIFY: $body"
-  command -v gh >/dev/null || return 0
+  command -v gh >/dev/null || { log "notify: gh is not installed, so that was only logged"; return 0; }
   num=$(open_issue_number)
   if [ -n "${num:-}" ] && [ "$num" != "null" ]; then
-    gh issue comment "$num" --repo "$GH_REPO" --body "$body" >/dev/null 2>&1 || true
+    out=$(gh issue comment "$num" --repo "$GH_REPO" --body "$body" 2>&1) ||
+      log "notify: could not comment on issue #$num: $out"
   else
-    gh issue create --repo "$GH_REPO" --title "$ISSUE_TITLE" --body "$body" >/dev/null 2>&1 || true
+    out=$(gh issue create --repo "$GH_REPO" --title "$ISSUE_TITLE" --body "$body" 2>&1) ||
+      log "notify: could not open an issue ($out). Enable issues: gh repo edit $GH_REPO --enable-issues"
   fi
 }
 
 notify_success() {
-  local body="$1" num
+  local body="$1" num out
   log "$body"
   command -v gh >/dev/null || return 0
   num=$(open_issue_number)
   if [ -n "${num:-}" ] && [ "$num" != "null" ]; then
-    gh issue close "$num" --repo "$GH_REPO" --comment "$body" >/dev/null 2>&1 || true
+    out=$(gh issue close "$num" --repo "$GH_REPO" --comment "$body" 2>&1) ||
+      log "notify: could not close issue #$num: $out"
   fi
 }
 
@@ -104,24 +109,36 @@ preflight() {
 
   log "Tools:"
   need git; need curl; need flock; need gh "gh auth login"
-  need node "needed to build the frontends"; need npm; need systemctl
+  need node "needed to build the frontends"; need npm; need systemctl; need java "a JVM to run Gradle"
 
-  if command -v java >/dev/null; then
+  # Check the compiler, not the runtime. A JRE satisfies `java` and then fails deep in the build
+  # with "Toolchain installation ... does not provide the required capabilities: [JAVA_COMPILER]",
+  # which is a long way from the thing that is actually missing.
+  if command -v javac >/dev/null; then
     local v
-    v=$(java -version 2>&1 | head -1)
-    if java -version 2>&1 | grep -qE '"(2[1-9]|[3-9][0-9])'; then
-      log "  ok      java   $v"
+    v=$(javac -version 2>&1 | head -1)
+    if javac -version 2>&1 | grep -qE ' (2[1-9]|[3-9][0-9])'; then
+      log "  ok      javac  $v"
     else
-      log "  TOO OLD java   $v  (JDK 21+ required)"
+      log "  TOO OLD javac  $v  (JDK 21+ required)"
       ok=1
     fi
   else
-    log "  MISSING java  (JDK 21+)"
+    log "  MISSING javac  (a JRE is not enough; install a JDK, e.g. openjdk-21-jdk-headless)"
     ok=1
   fi
 
   log "GitHub:"
   if gh auth status >/dev/null 2>&1; then log "  ok      gh authenticated"; else log "  FAILED  gh not authenticated"; ok=1; fi
+  # Forks have their issue tracker off by default, and without it a failing unattended run has no
+  # way to tell anyone. Not fatal to the pipeline, but it is the difference between a failure you
+  # hear about and one you do not.
+  if [ "$(gh repo view "$GH_REPO" --json hasIssuesEnabled --jq .hasIssuesEnabled 2>/dev/null)" = "true" ]; then
+    log "  ok      issues enabled, so failures can be reported"
+  else
+    log "  WARNING issues are disabled on $GH_REPO - failures will only reach the run log."
+    log "          Enable with: gh repo edit $GH_REPO --enable-issues"
+  fi
 
   log "Repository:"
   git rev-parse --show-toplevel >/dev/null 2>&1 || { log "  FAILED  not a git repository"; ok=1; }
@@ -201,7 +218,9 @@ rebase_onto_latest() {
 
 build_and_test() {
   log "Building frontends ..."
-  ( cd komga-webui && npm ci --no-audit --no-fund && npm run build ) || return 1
+  # The legacy webui runs its type check in a side process that exhausts the default Node heap and
+  # is killed; webpack then finishes anyway, so the build "succeeds" with no type checking at all.
+  ( cd komga-webui && npm ci --no-audit --no-fund && NODE_OPTIONS=--max-old-space-size=4096 npm run build ) || return 1
   ( cd next-ui && npm ci --no-audit --no-fund && npm run build:with-i18n ) || return 1
 
   log "Building jar ..."
@@ -396,8 +415,11 @@ main() {
 
   version=$(grep '^version' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
 
+  local dry_note=""
+  [ "$mode" = "--dry-run" ] && dry_note=" during a \`--dry-run\` rehearsal"
+
   if ! build_and_test; then
-    notify_failure "Build or tests failed after rebasing onto upstream **$version**. Nothing was released and production was not touched. The rebased branch is on \`$WORK\` locally, and the pre-rebase state is on the \`backup/\` branch left by the sync script."
+    notify_failure "Build or tests failed on upstream **$version**${dry_note}. Nothing was released and production was not touched. If a rebase did happen, the pre-rebase state is on the \`backup/\` branch left by the sync script."
     exit 1
   fi
 
