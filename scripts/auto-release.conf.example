@@ -7,40 +7,52 @@
 #   install -Dm600 scripts/auto-release.conf.example ~/.config/komga-auto.conf
 #   bash scripts/auto-release.sh --preflight
 #
+# The values below are examples. Find the real ones with:
+#
+#   systemctl list-units '*komga*'                      # the unit name
+#   systemctl cat komga.service | grep ExecStart        # the jar it starts
+#   find / -name database.sqlite 2>/dev/null            # the config directory
+#
 # Run the pipeline as the same user Komga runs as, not as root: it keeps the jar folder and
 # the build caches owned by that user. The only thing it needs privileges for is stopping and
 # starting the unit, so give that user a passwordless sudo rule for exactly that, in
-# /etc/sudoers.d/komga-auto (visudo -f /etc/sudoers.d/komga-auto):
+# /etc/sudoers.d/komga-auto (visudo -f /etc/sudoers.d/komga-auto), substituting your own user:
 #
-#   cube ALL=(root) NOPASSWD: /bin/systemctl start komga.service, \
-#                             /bin/systemctl stop komga.service, \
-#                             /bin/systemctl show komga.service
+#   youruser ALL=(root) NOPASSWD: /bin/systemctl start komga.service, \
+#                                 /bin/systemctl stop komga.service, \
+#                                 /bin/systemctl show komga.service
 #
-# Check the path first; it is /usr/bin/systemctl on some distributions.
-# Note that `sudo` changes $HOME to /root, so if you do run this with sudo, pass the config
-# explicitly: sudo KOMGA_AUTO_CONF=/home/cube/.config/komga-auto.conf bash scripts/auto-release.sh
+# Check the path first with `command -v systemctl`; it is /usr/bin/systemctl on some
+# distributions. Note that `sudo` changes $HOME to /root, so if you do run this with sudo,
+# pass the config explicitly:
+#
+#   sudo KOMGA_AUTO_CONF=$HOME/.config/komga-auto.conf bash scripts/auto-release.sh
 
 # The systemd unit that runs Komga.
 KOMGA_SERVICE=komga.service
 
 # The jar the unit starts. The pipeline overwrites this file, and also drops the versioned
 # jar next to it, so the folder keeps a history of what has run.
-KOMGA_JAR=/home/cube/komga/komga.jar
+KOMGA_JAR=/opt/komga/komga.jar
 
-# Where Komga keeps database.sqlite and tasks.sqlite, i.e. its --komga.config-dir.
-# Backed up before every upgrade, together with the -wal and -shm sidecars, because Flyway
-# migrations cannot be undone and a WAL must never be separated from its database.
-KOMGA_CONFIG_DIR=/home/cube/.komga
+# Where Komga keeps database.sqlite and tasks.sqlite, i.e. its --komga.config-dir. Defaults to
+# ~/.komga when that option is not set. Backed up before every upgrade, together with the -wal
+# and -shm sidecars, because Flyway migrations cannot be undone and a WAL must never be
+# separated from its database.
+KOMGA_CONFIG_DIR=/var/lib/komga
 
-# Used for the post-upgrade health check. Must be reachable from the machine running this.
+# Used for the post-upgrade health check. Must be reachable from the machine running this;
+# localhost is the safer choice, since it does not break if the LAN address changes.
 KOMGA_URL=http://localhost:25600
 
 # Where jar and database backups are kept, and how many upgrades to keep them for. Must be
 # writable by the user running the pipeline.
-BACKUP_DIR=/home/cube/komga/auto-backups
+BACKUP_DIR=/var/backups/komga
 KEEP_BACKUPS=3
 
-# Where releases are published and failures are reported as issues.
+# Where releases are published and failures are reported as issues. A fork has its issue
+# tracker disabled by default; without it a failing unattended run has nowhere to report to.
+#   gh repo edit <owner>/<repo> --enable-issues
 GH_REPO=ShabbyDog/komga
 
 # How long to wait for Komga to answer after an upgrade. A large library migrating a new
