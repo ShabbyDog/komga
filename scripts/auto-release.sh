@@ -111,21 +111,36 @@ preflight() {
   need git; need curl; need flock; need gh "gh auth login"
   need node "needed to build the frontends"; need npm; need systemctl; need java "a JVM to run Gradle"
 
-  # Check the compiler, not the runtime. A JRE satisfies `java` and then fails deep in the build
-  # with "Toolchain installation ... does not provide the required capabilities: [JAVA_COMPILER]",
-  # which is a long way from the thing that is actually missing.
-  if command -v javac >/dev/null; then
-    local v
-    v=$(javac -version 2>&1 | head -1)
-    if javac -version 2>&1 | grep -qE ' (2[1-9]|[3-9][0-9])'; then
-      log "  ok      javac  $v"
+  # This build declares no Java toolchain, so Gradle compiles with the JVM it runs on. What matters
+  # is therefore not whether *some* javac is on PATH but whether the home Gradle picks has one --
+  # otherwise the build dies much later with "Toolchain installation ... does not provide the
+  # required capabilities: [JAVA_COMPILER]". Resolve that home the way Gradle does.
+  local jhome="" v
+  if [ -n "${JAVA_HOME:-}" ]; then
+    jhome=$JAVA_HOME
+  elif command -v java >/dev/null; then
+    jhome=$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")
+  fi
+  if [ -z "$jhome" ]; then
+    log "  MISSING jdk    (no JAVA_HOME set and no java on PATH)"
+    ok=1
+  elif [ ! -x "$jhome/bin/javac" ]; then
+    log "  FAILED  jdk    $jhome has no bin/javac, so it is a JRE and Gradle cannot compile with it"
+    if command -v javac >/dev/null; then
+      log "                 javac on PATH is $(readlink -f "$(command -v javac)") -- a different"
+      log "                 installation; point JAVA_HOME at a home that owns it"
     else
-      log "  TOO OLD javac  $v  (JDK 21+ required)"
+      log "                 install a JDK, e.g. openjdk-21-jdk-headless"
+    fi
+    ok=1
+  else
+    v=$("$jhome/bin/javac" -version 2>&1 | head -1)
+    if printf '%s' "$v" | grep -qE ' (2[1-9]|[3-9][0-9])'; then
+      log "  ok      jdk    $v  ($jhome)"
+    else
+      log "  TOO OLD jdk    $v  ($jhome)  (JDK 21+ required)"
       ok=1
     fi
-  else
-    log "  MISSING javac  (a JRE is not enough; install a JDK, e.g. openjdk-21-jdk-headless)"
-    ok=1
   fi
 
   log "GitHub:"
@@ -222,6 +237,11 @@ build_and_test() {
   # is killed; webpack then finishes anyway, so the build "succeeds" with no type checking at all.
   ( cd komga-webui && npm ci --no-audit --no-fund && NODE_OPTIONS=--max-old-space-size=4096 npm run build ) || return 1
   ( cd next-ui && npm ci --no-audit --no-fund && npm run build:with-i18n ) || return 1
+
+  # Never inherit a running daemon. It caches its probe of the JDK it was started with, so a daemon
+  # from before a JDK was installed keeps insisting the home has no compiler, and the build fails on
+  # a machine where javac is demonstrably present.
+  ./gradlew --stop >/dev/null 2>&1 || true
 
   log "Building jar ..."
   ./gradlew :komga:webuiCopyIndex :komga:nextuiCopyIndex :komga:bootJar --console=plain || return 1
@@ -447,6 +467,14 @@ main() {
 }
 
 exec 9>"$LOCK" || die "cannot open lock file $LOCK"
-flock -n 9 || { echo "another run is in progress"; exit 0; }
+flock -n 9; lock_rc=$?
+if [ "$lock_rc" -ne 0 ]; then
+  # Exit 1 means another run holds the lock, which is a normal no-op. Anything else -- 127, flock
+  # not installed, above all -- means the lock never worked, and treating that as "already running"
+  # would report every unattended night as a quiet success while doing nothing at all.
+  [ "$lock_rc" -eq 1 ] || die "flock failed (exit $lock_rc); cannot guarantee a single instance"
+  echo "another run is in progress"
+  exit 0
+fi
 
 main "${1:-run}"

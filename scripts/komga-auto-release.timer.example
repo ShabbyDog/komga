@@ -38,6 +38,9 @@ WantedBy=timers.target
 # Environment=KOMGA_AUTO_CONF=/root/.config/komga-auto.conf
 # # Gradle and npm need a writable HOME for their caches.
 # Environment=HOME=/root
+# # A unit gets a minimal environment, so name the JDK rather than hoping PATH finds one. Gradle
+# # compiles with the JVM it runs on, so this home must contain bin/javac, not just bin/java.
+# Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 # ExecStart=/bin/bash scripts/auto-release.sh
 # # A build plus a migration on a large library can be slow; do not kill it half way.
 # TimeoutStartSec=3h
