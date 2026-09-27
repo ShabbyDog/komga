@@ -8,9 +8,11 @@
 #   sudo systemctl enable --now komga-auto-release.timer
 #   systemctl list-timers komga-auto-release.timer
 #
-# The pipeline stops Komga, swaps the jar and starts it again, so it needs the privileges to
-# do that. Running it as root is the simplest arrangement; the alternative is a dedicated user
-# with a sudoers rule for `systemctl {start,stop} komga.service` and write access to the jar.
+# Run the service as the user Komga itself runs as (`systemctl show -p User komga.service`),
+# not as root. That user already owns the jar folder, keeps the build caches and the checkout
+# owned by the same account, and is the one whose `gh auth login` the pipeline uses; root has
+# none of that. Its only privileged step, stopping and starting komga.service, comes from the
+# passwordless sudo rule described in auto-release.conf.example.
 
 # ---------- /etc/systemd/system/komga-auto-release.timer ----------
 [Unit]
@@ -33,11 +35,12 @@ WantedBy=timers.target
 #
 # [Service]
 # Type=oneshot
-# User=root
-# WorkingDirectory=/opt/src/komga
-# Environment=KOMGA_AUTO_CONF=/root/.config/komga-auto.conf
+# # The user komga.service runs as; replace "komga" and the /home/komga paths to match.
+# User=komga
+# WorkingDirectory=/home/komga/src/komga
+# Environment=KOMGA_AUTO_CONF=/home/komga/.config/komga-auto.conf
 # # Gradle and npm need a writable HOME for their caches.
-# Environment=HOME=/root
+# Environment=HOME=/home/komga
 # # A unit gets a minimal environment, so name the JDK rather than hoping PATH finds one. Gradle
 # # compiles with the JVM it runs on, so this home must contain bin/javac, not just bin/java.
 # Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
