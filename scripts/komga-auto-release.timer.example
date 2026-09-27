@@ -1,9 +1,9 @@
 # ShabbyFork: run the release pipeline on a schedule.
 #
-# Install both units, edit the paths, then enable the timer:
+# This file holds two units. Copy the timer section below into
+# /etc/systemd/system/komga-auto-release.timer, and the service section (uncommented, paths
+# edited) into /etc/systemd/system/komga-auto-release.service, then enable the timer:
 #
-#   sudo install -m644 scripts/komga-auto-release.service /etc/systemd/system/
-#   sudo install -m644 scripts/komga-auto-release.timer   /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now komga-auto-release.timer
 #   systemctl list-timers komga-auto-release.timer
