@@ -61,3 +61,25 @@ HEALTH_TIMEOUT=600
 
 # Title of the issue used to report failures. One is open at a time.
 ISSUE_TITLE='Automated release pipeline failed'
+
+# Overlaps between a new upstream release and a fork feature are reported in an issue of their
+# own, which the pipeline never closes.
+OVERLAP_ISSUE_TITLE='Upstream overlaps a fork feature'
+
+# Claude, via scripts/claude-assist.sh, before each upstream release is taken: it checks whether
+# upstream now provides a fork feature (fully: our commits are dropped, upstream wins; partly: an
+# overlap issue, nothing dropped), and resolves rebase conflicts it judges mechanical. It runs as
+# the pipeline's user with that user's `claude auth login`, read-only apart from editing the
+# conflicted files, and the pipeline verifies its work; the full tests still gate every release.
+# Set CLAUDE_ASSIST=0 to release without it. Without a working claude the pipeline still releases,
+# and says so in the release notes.
+CLAUDE_ASSIST=1
+# Use an absolute path: the systemd unit runs with the default PATH, which has no ~/.local/bin,
+# so a bare `claude` is not found under the timer even though it works in a shell.
+CLAUDE_BIN=$HOME/.local/bin/claude
+CLAUDE_MODEL=claude-opus-5-5
+# Seconds per Claude call, and how many conflicted commits one rebase may hand to it.
+CLAUDE_TIMEOUT=1800
+CLAUDE_MAX_CONFLICTS=10
+# Full JSON transcript of every call, for audit.
+CLAUDE_LOG_DIR=$HOME/.local/state/komga-auto-release
