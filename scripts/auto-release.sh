@@ -24,6 +24,14 @@
 
 set -uo pipefail
 
+# Without a UTF-8 locale the JVM encodes file paths as ASCII, and every test with a non-ASCII file
+# name fails (InvalidPathException on "/Éric_le_rouge"), so the release gate would depend on
+# whatever locale the caller happened to pass down. systemd hands services the system locale,
+# but a stripped environment does not, so make sure of it here.
+if [ "$(locale charmap 2>/dev/null)" != "UTF-8" ]; then
+  export LC_ALL=C.UTF-8
+fi
+
 WORK=ShabbyFork
 CONF="${KOMGA_AUTO_CONF:-$HOME/.config/komga-auto.conf}"
 LOCK=/tmp/komga-auto-release.lock
