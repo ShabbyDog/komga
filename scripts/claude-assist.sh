@@ -33,10 +33,31 @@ READ_TOOLS=(Read Glob Grep "Bash(git log:*)" "Bash(git show:*)" "Bash(git diff:*
 DENY_TOOLS=("Bash(git push:*)" "Bash(git commit:*)" "Bash(git rebase:*)" "Bash(git reset:*)"
   "Bash(git checkout:*)" "Bash(gh:*)" "Bash(curl:*)" WebFetch WebSearch)
 
+# The pipeline runs on the claude.ai subscription and must never bill API tokens instead. Any of
+# these makes the CLI switch to pay-per-token billing, so their presence is a refusal, not a
+# preference; and the CLI's own report of how it is authenticated has to agree.
+BILLING_VARS=(ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY)
+
+subscription_only() {
+  local v auth
+  for v in "${BILLING_VARS[@]}"; do
+    if [ -n "${!v:-}" ]; then
+      echo "claude-assist: refusing to run: $v is set, which would bill API tokens instead of the subscription" >&2
+      return 3
+    fi
+  done
+  auth=$("$CLAUDE_BIN" auth status 2>/dev/null | jq -r '"\(.authMethod)/\(.apiProvider)"' 2>/dev/null)
+  if [ "$auth" != "claude.ai/firstParty" ]; then
+    echo "claude-assist: refusing to run: claude is authenticated as '${auth:-unknown}', not a claude.ai subscription" >&2
+    return 3
+  fi
+}
+
 # run_claude <kind> <schema> <prompt> <allowed tool>...
 run_claude() {
   local kind="$1" schema="$2" prompt="$3" out log rc
   shift 3
+  subscription_only || return 3
   mkdir -p "$CLAUDE_LOG_DIR" || return 3
   log="$CLAUDE_LOG_DIR/$(date +%Y%m%d-%H%M%S)-$kind.json"
   echo "claude-assist: asking Claude ($CLAUDE_MODEL) for '$kind'; transcript: $log" >&2
