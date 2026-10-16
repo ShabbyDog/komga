@@ -243,7 +243,21 @@ preflight() {
   elif [ "$("$CLAUDE_BIN" auth status 2>/dev/null | jq -r '.loggedIn' 2>/dev/null)" != "true" ]; then
     log "  WARNING $CLAUDE_BIN is not logged in (run 'claude auth login' as $(id -un))"
   else
-    log "  ok      $("$CLAUDE_BIN" --version 2>/dev/null | head -1), logged in, model $CLAUDE_MODEL"
+    # claude-assist.sh refuses to run unless this is the claude.ai subscription; say so up front
+    # rather than letting every release quietly go out unreviewed.
+    local auth billing_var=""
+    for v in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY; do
+      [ -n "${!v:-}" ] && billing_var=$v
+    done
+    auth=$("$CLAUDE_BIN" auth status 2>/dev/null | jq -r '"\(.authMethod)/\(.apiProvider) \(.subscriptionType // "")"' 2>/dev/null)
+    if [ -n "$billing_var" ]; then
+      log "  WARNING $billing_var is set, so Claude will refuse to run (it would bill API tokens);"
+      log "          releases will go out without the overlap review until it is unset"
+    elif [ "${auth%% *}" != "claude.ai/firstParty" ]; then
+      log "  WARNING claude is authenticated as '$auth', not a claude.ai subscription; Claude will refuse to run"
+    else
+      log "  ok      $("$CLAUDE_BIN" --version 2>/dev/null | head -1), subscription (${auth#* }), model $CLAUDE_MODEL"
+    fi
   fi
   command -v jq >/dev/null || { log "  MISSING jq  (needed to read Claude's verdicts)"; [ "$CLAUDE_ASSIST" = "1" ] && ok=1; }
 
@@ -382,7 +396,7 @@ review_overlap() {
   local v n i entry commits ok c list body
   if ! v=$(bash "$CLAUDE_ASSIST_SH" overlap "$BASE_VERSION" "$TARGET_VERSION"); then
     log "WARNING: the overlap review did not run; releasing without it."
-    RELEASE_NOTES_EXTRA+=$'\n\n> **Overlap review did not run** (Claude was unavailable), so this release was not checked for fork features upstream now provides.'
+    RELEASE_NOTES_EXTRA+=$'\n\n> **Overlap review did not run** (Claude was unavailable, or refused to run because it would have billed API tokens), so this release was not checked for fork features upstream now provides.'
     return 0
   fi
   log "Overlap review: $(jq -r '.summary' <<< "$v")"
@@ -453,7 +467,7 @@ resolve_conflicts() {
 
     status_before=$(git status --porcelain | grep -vF -f <(printf '%s\n' "$files"))
     if ! v=$(bash "$CLAUDE_ASSIST_SH" resolve "$BASE_VERSION" "$TARGET_VERSION"); then
-      RESOLVE_REASON="Claude was unavailable or returned no verdict"; return 1
+      RESOLVE_REASON="Claude was unavailable, refused to run (API billing), or returned no verdict"; return 1
     fi
     if [ "$(jq -r '.safe and .resolved' <<< "$v")" != "true" ]; then
       RESOLVE_REASON="Claude judged it unsafe: $(jq -r '.reason_if_unsafe // .summary' <<< "$v")"; return 1
