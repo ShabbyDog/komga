@@ -12,6 +12,11 @@
 #             2 = deploy failed and was rolled back
 #             3 = error
 #
+# With CLAUDE_ASSIST=1 (the default) each upstream release is first put to Claude, through
+# scripts/claude-assist.sh: does it now ship a feature the fork added (if fully, upstream wins and
+# our commits are dropped), and, when the rebase conflicts, can the conflict be resolved safely?
+# Claude only advises and edits; this script checks its work and the full tests still gate it.
+#
 # Komga runs its Flyway migrations on startup and Flyway has no undo, so starting a newer jar
 # moves the database forward permanently. Rolling back therefore means restoring the database
 # as well as the jar, which is why the service is stopped before the backup is taken: a copy of
@@ -41,9 +46,17 @@ load_config() {
   GH_REPO=ShabbyDog/komga
   HEALTH_TIMEOUT=600
   ISSUE_TITLE='Automated release pipeline failed'
+  OVERLAP_ISSUE_TITLE='Upstream overlaps a fork feature'
+  CLAUDE_ASSIST=1
+  CLAUDE_BIN=claude
+  CLAUDE_MODEL=claude-opus-5-5
+  CLAUDE_TIMEOUT=1800
+  CLAUDE_LOG_DIR=$HOME/.local/state/komga-auto-release
+  CLAUDE_MAX_CONFLICTS=10
 
   # shellcheck source=/dev/null
   [ -f "$CONF" ] && . "$CONF"
+  export WORK CLAUDE_BIN CLAUDE_MODEL CLAUDE_TIMEOUT CLAUDE_LOG_DIR
 }
 
 # Komga usually runs as an ordinary user, so the pipeline does too and reaches for sudo only
@@ -71,6 +84,14 @@ open_issue_number() {
 TARGET_VERSION=""
 BASE_VERSION=""
 PENDING_RELEASES=""
+MODE=run
+# A snapshot of scripts/claude-assist.sh taken before any rebase: while one is stopped, the working
+# tree holds only the commits applied so far, which may predate the helper.
+CLAUDE_ASSIST_SH=""
+
+# Per release step: what Claude did, for that release's notes, and our commits to drop.
+RELEASE_NOTES_EXTRA=""
+DROP_COMMITS=""
 
 # The release this step is taking (the next one, since releases are taken in order), the tag our
 # branch sits on, and every release still to take. sync-release.sh owns the ordering.
@@ -129,6 +150,24 @@ notify_success() {
   if [ -n "${num:-}" ] && [ "$num" != "null" ]; then
     out=$(gh issue close "$num" --repo "$GH_REPO" --comment "$body" 2>&1) ||
       log "notify: could not close issue #$num: $out"
+  fi
+}
+
+# Overlaps go to an issue of their own, which the pipeline never closes: a fork feature that
+# upstream has started to cover is a judgement for a human, not a failure a good run clears.
+notify_overlap() {
+  local body="$1" num out
+  log "OVERLAP: $body"
+  if [ "$MODE" = "--dry-run" ]; then log "dry run: overlap only logged"; return 0; fi
+  command -v gh >/dev/null || return 0
+  num=$(gh issue list --repo "$GH_REPO" --state open --search "\"$OVERLAP_ISSUE_TITLE\" in:title" \
+    --json number --jq '.[0].number' 2>/dev/null)
+  if [ -n "${num:-}" ] && [ "$num" != "null" ]; then
+    out=$(gh issue comment "$num" --repo "$GH_REPO" --body "$body" 2>&1) ||
+      log "notify: could not comment on issue #$num: $out"
+  else
+    out=$(gh issue create --repo "$GH_REPO" --title "$OVERLAP_ISSUE_TITLE" --body "$body" 2>&1) ||
+      log "notify: could not open an overlap issue ($out)"
   fi
 }
 
@@ -193,6 +232,20 @@ preflight() {
     log "  WARNING issues are disabled on $GH_REPO - failures will only reach the run log."
     log "          Enable with: gh repo edit $GH_REPO --enable-issues"
   fi
+
+  log "Claude (CLAUDE_ASSIST=$CLAUDE_ASSIST):"
+  # Not fatal: without Claude the pipeline still releases, exactly as it did before Claude was
+  # added. Each release then says in its notes that the overlap review did not run.
+  if [ "$CLAUDE_ASSIST" != "1" ]; then
+    log "  note    disabled; no overlap review and no automatic conflict resolution"
+  elif ! command -v "$CLAUDE_BIN" >/dev/null; then
+    log "  WARNING $CLAUDE_BIN not found; releases will go out without the overlap review"
+  elif [ "$("$CLAUDE_BIN" auth status 2>/dev/null | jq -r '.loggedIn' 2>/dev/null)" != "true" ]; then
+    log "  WARNING $CLAUDE_BIN is not logged in (run 'claude auth login' as $(id -un))"
+  else
+    log "  ok      $("$CLAUDE_BIN" --version 2>/dev/null | head -1), logged in, model $CLAUDE_MODEL"
+  fi
+  command -v jq >/dev/null || { log "  MISSING jq  (needed to read Claude's verdicts)"; [ "$CLAUDE_ASSIST" = "1" ] && ok=1; }
 
   log "Repository:"
   git rev-parse --show-toplevel >/dev/null 2>&1 || { log "  FAILED  not a git repository"; ok=1; }
@@ -273,7 +326,16 @@ rebase_onto_next() {
   fi
   log "Taking upstream $TARGET_VERSION next (still to take, in order: $PENDING_RELEASES)."
 
-  bash scripts/sync-release.sh; rc=$?
+  claude_on && review_overlap
+
+  SYNC_DROP="$DROP_COMMITS" bash scripts/sync-release.sh; rc=$?
+  if [ "$rc" -eq 2 ] && claude_on; then
+    if resolve_conflicts; then
+      rc=0
+    else
+      log "Claude did not resolve the conflict: $RESOLVE_REASON"
+    fi
+  fi
   case "$rc" in
     0) log "Rebased onto $TARGET_VERSION." ;;
     2)
@@ -285,7 +347,7 @@ rebase_onto_next() {
       notify_failure "Rebasing \`$WORK\` from **$BASE_VERSION** onto upstream **$TARGET_VERSION** hit conflicts, so the pipeline stopped before building. The branch is untouched and a backup branch was left behind.
 
 Stopped on: $stopped
-
+$(claude_on && printf '\nClaude did not resolve it automatically: %s\n' "$RESOLVE_REASON")
 Conflicted files:
 ${files:-- (none listed)}
 
@@ -294,6 +356,125 @@ To resolve: run \`bash scripts/sync-release.sh\` (it rebases onto $TARGET_VERSIO
       ;;
     *) die "rebase failed (exit $rc)" ;;
   esac
+}
+
+# ---------------------------------------------------------------- Claude
+
+claude_on() {
+  [ "$CLAUDE_ASSIST" = "1" ] && [ -f "$CLAUDE_ASSIST_SH" ] && command -v "$CLAUDE_BIN" >/dev/null && command -v jq >/dev/null
+}
+
+# True if $1 is one of our feature commits on top of the current base: never an upstream commit,
+# and never fork tooling (the "(fork)" scope), which no upstream release can make redundant.
+droppable() {
+  local c="$1" base
+  base=$(git merge-base "$WORK" upstream/master) || return 1
+  c=$(git rev-parse --verify --quiet "$c^{commit}") || return 1
+  [ "$c" != "$base" ] && git merge-base --is-ancestor "$base" "$c" && git merge-base --is-ancestor "$c" "$WORK" &&
+    ! git log -1 --format=%s "$c" | grep -qE '^[a-z]+\(fork\)'
+}
+
+# Asks Claude whether the release being taken already provides one of our features. Fully
+# superseded features are dropped -- upstream wins -- and partial overlaps are left alone and
+# raised for a human. Never fatal: if Claude cannot answer, the release goes out as before and
+# its notes say the review did not run.
+review_overlap() {
+  local v n i entry commits ok c list body
+  if ! v=$(bash "$CLAUDE_ASSIST_SH" overlap "$BASE_VERSION" "$TARGET_VERSION"); then
+    log "WARNING: the overlap review did not run; releasing without it."
+    RELEASE_NOTES_EXTRA+=$'\n\n> **Overlap review did not run** (Claude was unavailable), so this release was not checked for fork features upstream now provides.'
+    return 0
+  fi
+  log "Overlap review: $(jq -r '.summary' <<< "$v")"
+
+  n=$(jq '.superseded | length' <<< "$v")
+  for ((i = 0; i < n; i++)); do
+    entry=$(jq -c ".superseded[$i]" <<< "$v")
+    commits=$(jq -r '.commits[]' <<< "$entry")
+    ok=1
+    for c in $commits; do droppable "$c" || { ok=0; log "overlap: refusing to drop $c (not one of our feature commits)"; }; done
+    [ -n "$commits" ] || ok=0
+    list=$(for c in $commits; do git log -1 --format='`%h` %s' "$c" 2>/dev/null || echo "\`$c\`"; done | sed 's/^/  - /')
+    if [ "$ok" -eq 1 ]; then
+      for c in $commits; do DROP_COMMITS+=" $(git rev-parse "$c")"; done
+      body="**$(jq -r '.feature' <<< "$entry")** — upstream $TARGET_VERSION now provides it, so our commits were dropped (upstream wins):
+$list
+  Upstream: $(jq -r '.upstream_evidence' <<< "$entry")"
+      RELEASE_NOTES_EXTRA+=$'\n\n### Dropped in favour of upstream\n\n'"$body"
+      notify_overlap "Upstream **$TARGET_VERSION** fully provides a fork feature, so the pipeline dropped it.
+
+$body
+
+The commits are still on the \`backup/\` branch left by the sync script. Close this once you agree."
+    else
+      notify_overlap "Claude judged a fork feature superseded by upstream **$TARGET_VERSION**, but the commits it named failed the safety checks, so nothing was dropped.
+
+**$(jq -r '.feature' <<< "$entry")**
+$list
+Upstream: $(jq -r '.upstream_evidence' <<< "$entry")"
+    fi
+  done
+
+  n=$(jq '.partial | length' <<< "$v")
+  for ((i = 0; i < n; i++)); do
+    entry=$(jq -c ".partial[$i]" <<< "$v")
+    list=$(jq -r '.commits[]' <<< "$entry" | while read -r c; do git log -1 --format='`%h` %s' "$c" 2>/dev/null || echo "\`$c\`"; done | sed 's/^/  - /')
+    notify_overlap "Upstream **$TARGET_VERSION** partly overlaps a fork feature. Nothing was dropped; the release keeps our commits. Decide whether to keep, trim or drop them.
+
+**$(jq -r '.feature' <<< "$entry")**
+$list
+Upstream: $(jq -r '.upstream_evidence' <<< "$entry")
+What upstream lacks: $(jq -r '.what_upstream_lacks' <<< "$entry")"
+  done
+}
+
+# With the rebase stopped on conflicts, lets Claude resolve them -- one stop at a time, since
+# continuing can stop again on a later commit -- and accepts a resolution only if Claude calls it
+# safe AND it checks out here: only the conflicted files changed, no markers left, no tests
+# involved, and only both-sides-modified conflicts (never a delete/modify, which is a judgement).
+# On any doubt it returns 1 with RESOLVE_REASON set, and the caller aborts as before.
+RESOLVE_REASON=""
+resolve_conflicts() {
+  local attempts=0 files status_before status_after v stopped rebase_dir
+  rebase_dir=$(git rev-parse --git-path rebase-merge)
+  while [ -d "$rebase_dir" ]; do
+    attempts=$((attempts + 1))
+    [ "$attempts" -le "$CLAUDE_MAX_CONFLICTS" ] || { RESOLVE_REASON="more than $CLAUDE_MAX_CONFLICTS conflicted commits"; return 1; }
+    files=$(git diff --name-only --diff-filter=U)
+    [ -n "$files" ] || { RESOLVE_REASON="the rebase stopped, but not on a conflict"; return 1; }
+    stopped=$(git log -1 --format='`%h` %s' REBASE_HEAD)
+
+    if git status --porcelain | grep -qE '^(DD|AU|UD|UA|DU|AA) '; then
+      RESOLVE_REASON="a delete/add conflict, which needs a decision rather than a merge"; return 1
+    fi
+    if printf '%s\n' "$files" | grep -qE '(^|/)src/test/|(^|/)tests?/|\.(test|spec)\.[jt]sx?$'; then
+      RESOLVE_REASON="the conflict is in a test file, which is never resolved automatically"; return 1
+    fi
+
+    status_before=$(git status --porcelain | grep -vF -f <(printf '%s\n' "$files"))
+    if ! v=$(bash "$CLAUDE_ASSIST_SH" resolve "$BASE_VERSION" "$TARGET_VERSION"); then
+      RESOLVE_REASON="Claude was unavailable or returned no verdict"; return 1
+    fi
+    if [ "$(jq -r '.safe and .resolved' <<< "$v")" != "true" ]; then
+      RESOLVE_REASON="Claude judged it unsafe: $(jq -r '.reason_if_unsafe // .summary' <<< "$v")"; return 1
+    fi
+    # Trust, but verify: the verdict is only a claim about the working tree.
+    if printf '%s\n' "$files" | xargs grep -lE '^(<<<<<<<|>>>>>>>)( |$)|^=======$' 2>/dev/null | grep -q .; then
+      RESOLVE_REASON="Claude reported success but conflict markers remain"; return 1
+    fi
+    status_after=$(git status --porcelain | grep -vF -f <(printf '%s\n' "$files"))
+    if [ "$status_before" != "$status_after" ]; then
+      RESOLVE_REASON="Claude changed files outside the conflict"; return 1
+    fi
+
+    log "Claude resolved the conflict on $stopped: $(jq -r '.summary' <<< "$v")"
+    RELEASE_NOTES_EXTRA+=$'\n\n### Rebase conflict resolved automatically\n\n'"Stopped on $stopped, in $(printf '%s\n' "$files" | sed 's/.*/`&`/' | paste -sd' ').
+$(jq -r '.summary' <<< "$v")"
+    printf '%s\n' "$files" | xargs git add -- || { RESOLVE_REASON="git add failed"; return 1; }
+    GIT_EDITOR=true git rebase --continue >/dev/null 2>&1
+  done
+  RESOLVE_REASON=""
+  return 0
 }
 
 build_and_test() {
@@ -355,7 +536,7 @@ The server reports its version as \`v$tag\`.
 Upstream's own release notes: $upstream_notes
 
 See [FORK_CHANGELOG.md](https://github.com/$GH_REPO/blob/$WORK/FORK_CHANGELOG.md) for what this
-fork adds, including which build each change first shipped in.
+fork adds, including which build each change first shipped in.$RELEASE_NOTES_EXTRA
 EOF
 )" "$jar" || return 1
 }
@@ -482,6 +663,7 @@ released_note() {
 
 main() {
   local mode="${1:-run}" rc jar tag version
+  MODE=$mode
 
   load_config
   cd "$(git rev-parse --show-toplevel)" || die "not in a git repository"
@@ -492,6 +674,11 @@ main() {
   esac
 
   preflight || die "preflight failed; fix the above first"
+
+  if [ "$CLAUDE_ASSIST" = "1" ] && [ -f scripts/claude-assist.sh ]; then
+    CLAUDE_ASSIST_SH=$(mktemp --suffix=-claude-assist.sh) && cp scripts/claude-assist.sh "$CLAUDE_ASSIST_SH" &&
+      trap 'rm -f "$CLAUDE_ASSIST_SH"' EXIT
+  fi
 
   # Exercises the riskiest and least testable part of the pipeline against the jar that is
   # already installed: a real stop, a real backup, a real start and a real health check, with
@@ -514,6 +701,7 @@ main() {
   # server through each intermediate version would only add downtime. A dry run takes a single
   # step, since its rebases are never tagged and would otherwise be retaken forever.
   while :; do
+    RELEASE_NOTES_EXTRA="" DROP_COMMITS=""
     rebase_onto_next; rc=$?
     case "$rc" in
       0)  ;;
