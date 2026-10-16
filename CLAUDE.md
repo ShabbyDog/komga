@@ -175,6 +175,32 @@ Two things it cannot do, by construction:
 - **It cannot resolve conflicts or judge upstream's changes.** A release that needs either
   stops and waits.
 
+#### Claude in the pipeline
+
+Before each upstream release is taken, the pipeline asks Claude (`scripts/claude-assist.sh`,
+headless, Opus 5.5 by default) two things:
+
+1. **Does this release now provide a fork feature?** Upstream wins: commits of a feature Claude
+   judges *fully* superseded are dropped from the rebase (`SYNC_DROP` in `sync-release.sh`) and
+   named in the release notes and the overlap issue. *Partial* overlaps are never acted on; they
+   go to the "Upstream overlaps a fork feature" issue for a human, and the pipeline never closes
+   that issue. The script, not Claude, enforces that only our own commits on the current base can
+   be dropped, and never `(fork)`-scoped tooling.
+2. **Can a rebase conflict be resolved safely?** Claude may edit only the conflicted files. The
+   pipeline accepts a resolution only when Claude calls it safe *and* the script confirms no
+   markers remain, nothing outside the conflicted files changed, no test file is involved, and it
+   is not a delete/modify conflict. It then continues the rebase itself; the resolution is quoted
+   in the release notes. Anything else aborts as before, with Claude's reasoning in the issue.
+   Build and test failures are never auto-fixed.
+
+Claude runs in `dontAsk` mode with an explicit tool list (read, `Edit` for `resolve`, read-only
+`git`), with user settings, hooks and MCP servers not loaded, so it cannot commit, push or reach
+GitHub. Transcripts are kept in `CLAUDE_LOG_DIR`. Without a working `claude` (not installed, not
+logged in, timed out) the pipeline releases exactly as before and the release notes say the
+review did not run. `CLAUDE_BIN` must be an absolute path: the systemd unit's default `PATH` has
+no `~/.local/bin`. The helper is snapshotted before rebasing, since a stopped rebase's working
+tree only holds the commits applied so far.
+
 The failure issue's title names the upstream release being taken
 (`Automated release pipeline failed: upstream <version>`), and its body says which release
 `ShabbyFork` was on, the releases still to take, and the last fork release; a conflict also names the commit that stopped
@@ -229,7 +255,7 @@ arrives enabled by default, and the disable only applies to workflows that alrea
   updates screen in both UIs. Single source of truth; edit this file, nothing else. Each entry
   carries an `*Added in <version>-ShabbyFork-build<n>.*` line under its heading, recording the
   build it first shipped in; add one when you add an entry.
-- `scripts/` — the sync and drift scripts above, plus `auto-release.sh` (below) and
+- `scripts/` — the sync and drift scripts above, plus `auto-release.sh` and its `claude-assist.sh` helper (below) and
   `.gitattributes` pinning them to LF.
 - `next-ui/.gitattributes` — pins generated files to LF so builds do not dirty the tree.
 - `next-ui/src/utils/i18n/locale-messages.ts` — loads translations via Vite's glob import

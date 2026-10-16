@@ -10,6 +10,9 @@
 #   bash scripts/sync-release.sh --pending  # print the releases still to take, oldest first
 #   bash scripts/sync-release.sh            # rebase the work branch onto the next release
 #
+# SYNC_DROP="<sha> ..." drops those of our commits during the rebase: how auto-release.sh retires a
+# fork feature that upstream now provides itself. The backup branch still has them.
+#
 # Exit codes: 0 = already on the newest release | 1 = a newer release exists
 #             2 = rebase stopped on conflicts   | 3 = error
 
@@ -19,6 +22,22 @@ WORK=ShabbyFork
 TAG_RE='^v?[0-9]+\.[0-9]+\.[0-9]+$'
 
 cd "$(git rev-parse --show-toplevel)" || exit 3
+
+# Self-invoked as the rebase's sequence editor when SYNC_DROP is set: turn "pick <sha>" into
+# "drop <sha>" for each listed commit. Short SHAs in the todo are expanded before comparing, since
+# their length depends on the repository.
+if [ "${1:-}" = "--drop-todo" ]; then
+  todo="$2"
+  while IFS= read -r line; do
+    read -r cmd sha _ <<< "$line"
+    if [ "${cmd:-}" = "pick" ] && full=$(git rev-parse --verify --quiet "$sha^{commit}") &&
+      printf ' %s ' "$SYNC_DROP" | grep -q " $full "; then
+      line="drop${line#pick}"
+    fi
+    printf '%s\n' "$line"
+  done < "$todo" > "$todo.new" && mv "$todo.new" "$todo"
+  exit 0
+fi
 
 CHECK=0 PENDING=0
 case "${1:-}" in
@@ -99,7 +118,24 @@ echo
 echo "Backup of the current branch: $backup"
 
 echo "Rebasing $WORK onto $next_tag ..."
-if git rebase --onto "$next_tag" "$base" "$WORK"; then
+drop=()
+if [ -n "${SYNC_DROP:-}" ]; then
+  # Expand to full SHAs and refuse anything that is not one of ours, so a stray SHA can never
+  # reach the todo list.
+  full_drop=""
+  for c in $SYNC_DROP; do
+    full=$(git rev-parse --verify --quiet "$c^{commit}") && git merge-base --is-ancestor "$base" "$full" &&
+      [ "$full" != "$base" ] && git merge-base --is-ancestor "$full" "$WORK" ||
+      { echo "error: SYNC_DROP: $c is not one of our commits on $WORK" >&2; exit 3; }
+    full_drop="$full_drop $full"
+  done
+  export SYNC_DROP="$full_drop"
+  echo "Dropping, in favour of upstream:"
+  for c in $SYNC_DROP; do git log -1 --format='  %h %s' "$c"; done
+  ours=$((ours - $(printf '%s\n' $SYNC_DROP | wc -l)))
+  drop=(-i --no-autosquash)
+fi
+if GIT_SEQUENCE_EDITOR="bash $(pwd)/scripts/sync-release.sh --drop-todo" git rebase "${drop[@]}" --onto "$next_tag" "$base" "$WORK"; then
   echo
   echo "Done. $WORK is now $next_tag + $ours commit(s)."
   echo "The jar will report version $(grep '^version' gradle.properties | cut -d= -f2)."
