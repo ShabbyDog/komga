@@ -145,8 +145,9 @@ runs the stop, backup, install, start and health check against the jar already i
 proves the deploy path and takes a real backup while changing nothing.
 
 Exit codes: `0` nothing to do or fully succeeded, `1` stopped safely before anything mattered,
-`2` deploy failed and was rolled back, `3` error. Failures open an issue on the fork and a
-success closes it, so a recurring failure cannot bury its own notifications.
+`2` deploy failed and was rolled back, `3` error. Failures open an issue on the fork (or
+comment on the open one) and a success closes it, so a recurring failure cannot bury its own
+notifications.
 
 What it refuses to do:
 
@@ -164,6 +165,26 @@ Two things it cannot do, by construction:
   ours to do when we write a change; the pipeline's job is upstream rebases.
 - **It cannot resolve conflicts or judge upstream's changes.** A release that needs either
   stops and waits.
+
+The failure issue's title names the upstream release being taken
+(`Automated release pipeline failed: upstream <version>`), and its body says which release
+`ShabbyFork` was on and the last fork release; a conflict also names the commit that stopped
+and the conflicted files.
+
+#### Resolving a failed run
+
+Failures are resolved in a Claude Code session on this server, then handed back to the
+pipeline, so the release goes out exactly as an unattended one would. Nothing is ever
+pushed or submitted to upstream.
+
+1. Rehearse in a throwaway worktree if useful, then `bash scripts/sync-release.sh`, fix the
+   conflicts and `git rebase --continue`. (The `git release-sync` alias is not configured on
+   the server.)
+2. `bash scripts/auto-release.sh`. It finds `ShabbyFork` on the newest release with no
+   `<version>-ShabbyFork-build*` tag yet, so it builds, tests (Linux), pushes with
+   `--force-with-lease`, tags, publishes the GitHub release, deploys, and closes the issue.
+   Only a version with no fork tag qualifies, so ordinary commits on an already-released
+   version are never shipped by the timer.
 
 ### Upstream's GitHub Actions are disabled
 
