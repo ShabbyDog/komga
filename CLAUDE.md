@@ -195,7 +195,10 @@ headless, Opus 5.5 by default) two things:
 
 Claude runs in `dontAsk` mode with an explicit tool list (read, `Edit` for `resolve`, read-only
 `git`), with user settings, hooks and MCP servers not loaded, so it cannot commit, push or reach
-GitHub. Transcripts are kept in `CLAUDE_LOG_DIR`. Without a working `claude` (not installed, not
+GitHub. Transcripts are kept in `CLAUDE_LOG_DIR`. It runs on the claude.ai subscription only:
+`claude-assist.sh` refuses to call Claude if `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` or a
+Bedrock/Vertex/Foundry switch is set, or if `claude auth status` reports anything but
+`claude.ai`, so the pipeline can never bill API tokens (preflight warns when that would happen). Without a working `claude` (not installed, not
 logged in, timed out) the pipeline releases exactly as before and the release notes say the
 review did not run. `CLAUDE_BIN` must be an absolute path: the systemd unit's default `PATH` has
 no `~/.local/bin`. The helper is snapshotted before rebasing, since a stopped rebase's working
