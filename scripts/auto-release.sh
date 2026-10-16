@@ -70,14 +70,18 @@ open_issue_number() {
 # something did. Set by release_context once tags are fetched; empty before that.
 TARGET_VERSION=""
 BASE_VERSION=""
+PENDING_RELEASES=""
 
-# Mirrors sync-release.sh: the newest X.Y.Z tag, and the tag our branch currently sits on.
+# The release this step is taking (the next one, since releases are taken in order), the tag our
+# branch sits on, and every release still to take. sync-release.sh owns the ordering.
 release_context() {
   local base
-  TARGET_VERSION=$(git for-each-ref --sort=-creatordate --format='%(refname:short)' refs/tags |
-    grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
   base=$(git merge-base "$WORK" upstream/master 2>/dev/null) || return 0
   BASE_VERSION=$(git describe --tags --exact-match "$base" 2>/dev/null || git rev-parse --short "$base")
+  PENDING_RELEASES=$(bash scripts/sync-release.sh --pending 2>/dev/null | paste -sd' ')
+  # Nothing pending but still being released means the base itself is what is being taken.
+  TARGET_VERSION=${PENDING_RELEASES%% *}
+  TARGET_VERSION=${TARGET_VERSION:-$BASE_VERSION}
 }
 
 last_fork_release() {
@@ -100,6 +104,7 @@ notify_failure() {
 | --- | --- |
 | Upstream release being taken | ${TARGET_VERSION:-unknown} |
 | \`$WORK\` was built on | ${BASE_VERSION:-unknown} |
+| Upstream releases still to take, in order | ${PENDING_RELEASES:-none} |
 | Last fork release | ${last:-none} |
 | Host / time | $(hostname) / $(date +'%Y-%m-%d %H:%M:%S %Z') |"
 
@@ -241,35 +246,36 @@ preflight() {
 
 # ---------------------------------------------------------------- pipeline steps
 
-rebase_onto_latest() {
+# Moves onto the next upstream release, not the newest: every upstream release gets a fork
+# release of its own, so the two release lists line up. main() loops this until caught up.
+rebase_onto_next() {
   local rc version stopped files
   bash scripts/sync-release.sh --check; rc=$?
+  case "$rc" in 0|1) ;; *) die "release check failed (exit $rc)" ;; esac
   release_context
-  case "$rc" in
-    0)
-      # Being on the newest release is not the same as having released it: a rebase that
-      # conflicted and was then resolved by hand leaves the branch on the new release with no
-      # build of it anywhere, and stopping here would leave it that way forever. Only a version
-      # with no fork tag at all qualifies, so ordinary commits on a released version are not
-      # shipped behind anyone's back.
-      git checkout --quiet "$WORK" || die "cannot check out $WORK"
-      version=$(grep '^version' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
-      if [ -n "$(git tag -l "$version-ShabbyFork-build*")" ]; then
-        log "Already on the latest upstream release and it has been released; nothing to do."
-        return 10
-      fi
-      log "On upstream $version but nothing has been released for it (rebase resolved by hand?); releasing."
-      return 0
-      ;;
-    1) log "A newer upstream release exists; continuing." ;;
-    *) die "release check failed (exit $rc)" ;;
-  esac
 
+  # Sitting on a release is not the same as having released it: a rebase that conflicted and was
+  # resolved by hand leaves the branch on that release with no build of it anywhere. It has to be
+  # released before moving on -- whether or not newer releases are waiting -- or the catch-up
+  # would skip it. Only a version with no fork tag at all qualifies, so ordinary commits on a
+  # released version are not shipped behind anyone's back.
   git checkout --quiet "$WORK" || die "cannot check out $WORK"
+  version=$(grep '^version' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+  if [ "$BASE_VERSION" = "$version" ] && [ -z "$(git tag -l "$version-ShabbyFork-build*")" ]; then
+    TARGET_VERSION=$version
+    log "On upstream $version but nothing has been released for it (rebase resolved by hand?); releasing it first."
+    return 0
+  fi
+
+  if [ "$rc" -eq 0 ]; then
+    log "Already on the latest upstream release and it has been released; nothing to do."
+    return 10
+  fi
+  log "Taking upstream $TARGET_VERSION next (still to take, in order: $PENDING_RELEASES)."
 
   bash scripts/sync-release.sh; rc=$?
   case "$rc" in
-    0) log "Rebased onto the new release." ;;
+    0) log "Rebased onto $TARGET_VERSION." ;;
     2)
       # sync-release leaves the rebase in progress on purpose; record what stopped it, then back
       # out so the checkout is left usable for whoever resolves it.
@@ -283,7 +289,7 @@ Stopped on: $stopped
 Conflicted files:
 ${files:-- (none listed)}
 
-To resolve: run \`bash scripts/sync-release.sh\`, fix the conflicts, \`git rebase --continue\`, then \`bash scripts/auto-release.sh\`. It sees $TARGET_VERSION has not been released yet and builds, tests, releases and deploys it, closing this issue."
+To resolve: run \`bash scripts/sync-release.sh\` (it rebases onto $TARGET_VERSION, the next release in order), fix the conflicts, \`git rebase --continue\`, then \`bash scripts/auto-release.sh\`. It sees $TARGET_VERSION has not been released yet and releases it, then carries on through any later releases, deploys the newest, and closes this issue."
       return 11
       ;;
     *) die "rebase failed (exit $rc)" ;;
@@ -330,15 +336,17 @@ find_built_jar() {
   printf '%s' "$jar"
 }
 
+# Every release but the newest is published as not-latest, so a run that catches up on several
+# upstream releases leaves GitHub's "Latest" on the newest one rather than on whichever was last.
 publish_release() {
-  local jar="$1" tag="$2" version="$3" upstream_notes
+  local jar="$1" tag="$2" version="$3" latest="$4" upstream_notes
   upstream_notes="https://github.com/gotson/komga/releases/tag/$version"
 
   git push --force-with-lease origin "$WORK" || return 1
   git tag -a "$tag" -m "ShabbyFork build on Komga $version" || return 1
   git push origin "$tag" || return 1
 
-  gh release create "$tag" --repo "$GH_REPO" --title "$tag" --notes "$(cat <<EOF
+  gh release create "$tag" --repo "$GH_REPO" --title "$tag" --latest="$latest" --notes "$(cat <<EOF
 Built automatically from upstream **Komga $version** with the ShabbyFork patches on top. No
 unreleased upstream code is included: this is exactly the $version release plus our changes.
 
@@ -460,6 +468,16 @@ prune_backups() {
   done
 }
 
+# What a failing pass should say about the passes before it in the same run: either nothing
+# shipped, or which releases did and that production is being moved onto the newest of them.
+released_note() {
+  if [ -n "$1" ]; then
+    printf 'Earlier in this run %s was released, so production is being upgraded to that instead. ' "$1"
+  else
+    printf 'Nothing was released and production was not touched. '
+  fi
+}
+
 # ---------------------------------------------------------------- main
 
 main() {
@@ -488,51 +506,72 @@ main() {
     esac
   fi
 
-  rebase_onto_latest; rc=$?
-  case "$rc" in
-    0)  ;;
-    10)
-      # A dry run is a rehearsal, so it builds and tests even when there is nothing new to take.
-      if [ "$mode" = "--dry-run" ]; then
-        log "Nothing new upstream; rehearsing the build and tests anyway."
-      else
-        exit 0
-      fi
-      ;;
-    11) exit 1 ;;
-    *)  exit 3 ;;
-  esac
-
-  version=$(grep '^version' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
-
-  local dry_note=""
+  local released="" jar_out="" fail_rc=0 more dry_note=""
   [ "$mode" = "--dry-run" ] && dry_note=" during a \`--dry-run\` rehearsal"
 
-  if ! build_and_test; then
-    notify_failure "Build or tests failed on upstream **$version**${dry_note}. Nothing was released and production was not touched. If a rebase did happen, the pre-rebase state is on the \`backup/\` branch left by the sync script."
-    exit 1
-  fi
+  # One upstream release per pass, oldest first, each built, tested and released on its own.
+  # Only the newest one released is deployed: Komga's migrations are cumulative, so stepping the
+  # server through each intermediate version would only add downtime. A dry run takes a single
+  # step, since its rebases are never tagged and would otherwise be retaken forever.
+  while :; do
+    rebase_onto_next; rc=$?
+    case "$rc" in
+      0)  ;;
+      10)
+        # A dry run is a rehearsal, so it builds and tests even when there is nothing new to take.
+        [ "$mode" = "--dry-run" ] || break
+        log "Nothing new upstream; rehearsing the build and tests anyway."
+        ;;
+      11) fail_rc=1; break ;;
+      *)  exit 3 ;;
+    esac
 
-  jar=$(find_built_jar) || { notify_failure "The build reported success but no jar matching komga-$version-ShabbyFork-build*.jar was found."; exit 3; }
-  tag="$(basename "$jar" .jar | sed "s/^komga-//")"
-  log "Built $jar (tag $tag)"
+    version=$(grep '^version' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
 
-  if [ "$mode" = "--dry-run" ]; then
-    log "Dry run: stopping before tag, push, release and deploy."
-    exit 0
-  fi
+    if ! build_and_test; then
+      notify_failure "Build or tests failed on upstream **$version**${dry_note}. $(released_note "$released")If a rebase did happen, the pre-rebase state is on the \`backup/\` branch left by the sync script."
+      fail_rc=1; break
+    fi
 
-  if ! publish_release "$jar" "$tag" "$version"; then
-    notify_failure "Built and tested **$tag**, but publishing the GitHub release failed. Production was not touched."
-    exit 1
-  fi
-  log "Released $tag"
+    jar=$(find_built_jar) || {
+      notify_failure "The build reported success but no jar matching komga-$version-ShabbyFork-build*.jar was found. $(released_note "$released")"
+      fail_rc=3; break
+    }
+    tag="$(basename "$jar" .jar | sed "s/^komga-//")"
+    log "Built $jar (tag $tag)"
 
-  deploy "$jar"; rc=$?
+    if [ "$mode" = "--dry-run" ]; then
+      log "Dry run: stopping before tag, push, release and deploy."
+      exit 0
+    fi
+
+    more=$(bash scripts/sync-release.sh --pending 2>/dev/null | head -1)
+    if ! publish_release "$jar" "$tag" "$version" "$([ -z "$more" ] && echo true || echo false)"; then
+      notify_failure "Built and tested **$tag**, but publishing the GitHub release failed. $(released_note "$released")"
+      fail_rc=1; break
+    fi
+    log "Released $tag"
+    released="${released:+$released, }**$tag**"
+    jar_out=$jar
+
+    [ -n "$more" ] || break
+  done
+
+  [ -n "$jar_out" ] || exit "$fail_rc"
+
+  deploy "$jar_out"; rc=$?
   case "$rc" in
-    0) notify_success "Released **$tag** (upstream $version) and upgraded production. Health check passed." ; exit 0 ;;
-    2) notify_failure "Released **$tag**, but production did not come up healthy and was rolled back to the previous jar **and database**. The release itself is fine; the server is back on the old build."; exit 2 ;;
-    *) notify_failure "Released **$tag**, but the deploy step failed before it could swap anything. Production should be untouched - check \`systemctl status $KOMGA_SERVICE\`."; exit 3 ;;
+    0)
+      if [ "$fail_rc" -ne 0 ]; then
+        # The failure is already reported; this keeps the issue open but says production moved.
+        notify_failure "Production was upgraded to the newest build this run did release, $(basename "$jar_out" .jar | sed 's/^komga-//'). Health check passed. The failure above still needs resolving."
+        exit "$fail_rc"
+      fi
+      notify_success "Released $released and upgraded production to the newest of them. Health check passed."
+      exit 0
+      ;;
+    2) notify_failure "Released $released, but production did not come up healthy and was rolled back to the previous jar **and database**. The releases themselves are fine; the server is back on the old build."; exit 2 ;;
+    *) notify_failure "Released $released, but the deploy step failed before it could swap anything. Production should be untouched - check \`systemctl status $KOMGA_SERVICE\`."; exit 3 ;;
   esac
 }
 
