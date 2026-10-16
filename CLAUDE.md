@@ -195,6 +195,14 @@ pushed or submitted to upstream.
    and closes the issue. Only a version with no fork tag qualifies, so ordinary commits on an
    already-released version are never shipped by the timer.
 
+Backfilling a release that was skipped (done once, for 1.29.0): build it in a separate local
+clone on a branch literally named `ShabbyFork`, because both UIs display `git.branch` as part of
+the version, so a worktree on another branch would ship a wrong version string. Publish it
+`--latest=false` and never deploy it. GitHub orders releases by the **annotated tag's date**,
+not the release's, so a backfill sorts above every later release; fix that by re-tagging each
+later release on its same commit (`git tag -f -a`, force-push the tag) and recreating its
+release with the identical jar and notes.
+
 ### Upstream's GitHub Actions are disabled
 
 The fork inherits upstream's workflows, and several of them talk to upstream's own
