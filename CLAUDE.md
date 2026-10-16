@@ -15,8 +15,8 @@ requests, so our changes live here permanently.
 **Every jar we build must be "the last upstream *release* + our changes" — never a
 release plus unreleased upstream commits.** That is the whole shape of this workflow.
 
-- **`ShabbyFork` is the build branch.** Its history is always linear: the newest upstream
-  **release tag**, then our commits on top. Nothing else. It is what you build from.
+- **`ShabbyFork` is the build branch.** Its history is always linear: an upstream
+  **release tag** (normally the newest), then our commits on top. Nothing else. It is what you build from.
 - **We rebase onto release tags; we do not merge `upstream/master`.** Merging master would
   pull unreleased commits into the jar, which is exactly what we are avoiding. Rebasing
   rewrites history, so pushing uses `git push --force-with-lease origin ShabbyFork`.
@@ -24,17 +24,23 @@ release plus unreleased upstream commits.** That is the whole shape of this work
   to see what upstream is doing. A local `pre-commit` hook blocks commits on it
   (`git commit --no-verify` overrides). Advance it with `git fetch upstream master:master`.
 - `git diff <release tag> ShabbyFork` should only ever show our own files.
+- **Every upstream release gets a fork release, in order.** When several have shipped since
+  our base (because the pipeline was stuck, say), we take them one at a time and release each,
+  never jump straight to the newest, so our release list lines up with upstream's.
 
 ### Moving onto a new upstream release
 
 ```bash
-git release-check    # is there a newer release tag? what would be replayed?
-git release-sync     # rebase ShabbyFork onto the newest release tag
+git release-check    # is there a newer release tag? which ones, in order? what would be replayed?
+git release-sync     # rebase ShabbyFork onto the NEXT release tag
+bash scripts/sync-release.sh --pending   # just the releases still to take, oldest first
 ```
 
-Both are `scripts/sync-release.sh`. It fetches tags, picks the newest `X.Y.Z` tag by
-creation date, reports which release we are built on, and rebases our commits onto the
-new tag. It refuses to run on a dirty tree and always leaves a `backup/ShabbyFork-<stamp>`
+Both are `scripts/sync-release.sh` (the aliases exist on the Windows checkout, not on the
+Linux server; call the script directly there). It fetches tags, lists the `X.Y.Z` tags that
+come after the release we are built on (chosen by ancestry, since upstream's older tags carry
+a `v` prefix and would sort wrongly), and rebases our commits onto the *next* one. Run it
+again to advance further. It refuses to run on a dirty tree and always leaves a `backup/ShabbyFork-<stamp>`
 branch before rewriting anything. Exit codes: `0` already newest, `1` a newer release
 exists, `2` rebase stopped on conflicts, `3` error.
 
@@ -127,7 +133,10 @@ apt. Three things that otherwise waste an hour:
 
 `scripts/auto-release.sh` runs the whole chain unattended, on the Linux box that also serves
 production: check upstream, rebase, build, test, tag, publish a GitHub release, then upgrade
-the local service. It is driven by a systemd timer (`scripts/komga-auto-release.timer.example`)
+the local service. If several upstream releases are waiting it takes them in order, building,
+testing and publishing a fork release for each (all but the newest marked not-latest on
+GitHub), and deploys only the newest, since Komga's migrations are cumulative. A failure part
+way through still deploys what that run did release, and leaves the issue open for the rest. It is driven by a systemd timer (`scripts/komga-auto-release.timer.example`)
 and configured by `~/.config/komga-auto.conf`, copied from `scripts/auto-release.conf.example`
 and kept outside the repo so machine-specific paths never reach the fork diff.
 
@@ -168,7 +177,7 @@ Two things it cannot do, by construction:
 
 The failure issue's title names the upstream release being taken
 (`Automated release pipeline failed: upstream <version>`), and its body says which release
-`ShabbyFork` was on and the last fork release; a conflict also names the commit that stopped
+`ShabbyFork` was on, the releases still to take, and the last fork release; a conflict also names the commit that stopped
 and the conflicted files.
 
 #### Resolving a failed run
@@ -177,14 +186,14 @@ Failures are resolved in a Claude Code session on this server, then handed back 
 pipeline, so the release goes out exactly as an unattended one would. Nothing is ever
 pushed or submitted to upstream.
 
-1. Rehearse in a throwaway worktree if useful, then `bash scripts/sync-release.sh`, fix the
-   conflicts and `git rebase --continue`. (The `git release-sync` alias is not configured on
-   the server.)
-2. `bash scripts/auto-release.sh`. It finds `ShabbyFork` on the newest release with no
-   `<version>-ShabbyFork-build*` tag yet, so it builds, tests (Linux), pushes with
-   `--force-with-lease`, tags, publishes the GitHub release, deploys, and closes the issue.
-   Only a version with no fork tag qualifies, so ordinary commits on an already-released
-   version are never shipped by the timer.
+1. Rehearse in a throwaway worktree if useful, then `bash scripts/sync-release.sh`, which
+   rebases onto the release the issue names (the next in order, not the newest), fix the
+   conflicts and `git rebase --continue`.
+2. `bash scripts/auto-release.sh`. It finds `ShabbyFork` on a release with no
+   `<version>-ShabbyFork-build*` tag yet and releases that first, before advancing; then it
+   carries on through any later releases (stopping again if one conflicts), deploys the newest,
+   and closes the issue. Only a version with no fork tag qualifies, so ordinary commits on an
+   already-released version are never shipped by the timer.
 
 ### Upstream's GitHub Actions are disabled
 
