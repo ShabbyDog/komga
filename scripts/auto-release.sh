@@ -66,18 +66,52 @@ open_issue_number() {
     --json number --jq '.[0].number' 2>/dev/null
 }
 
+# Which releases a run is about, so a failure report says what failed rather than only that
+# something did. Set by release_context once tags are fetched; empty before that.
+TARGET_VERSION=""
+BASE_VERSION=""
+
+# Mirrors sync-release.sh: the newest X.Y.Z tag, and the tag our branch currently sits on.
+release_context() {
+  local base
+  TARGET_VERSION=$(git for-each-ref --sort=-creatordate --format='%(refname:short)' refs/tags |
+    grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+  base=$(git merge-base "$WORK" upstream/master 2>/dev/null) || return 0
+  BASE_VERSION=$(git describe --tags --exact-match "$base" 2>/dev/null || git rev-parse --short "$base")
+}
+
+last_fork_release() {
+  git tag -l '*-ShabbyFork-build*' --sort=-creatordate | head -1
+}
+
 # Delivery is reported rather than swallowed: a notification channel that has quietly stopped
 # working is worse than none, because the run log then looks like everything was fine.
 notify_failure() {
-  local body="$1" num out
+  local body="$1" num out title last
   log "NOTIFY: $body"
   command -v gh >/dev/null || { log "notify: gh is not installed, so that was only logged"; return 0; }
+
+  last=$(last_fork_release)
+  title=$ISSUE_TITLE
+  [ -n "$TARGET_VERSION" ] && title="$ISSUE_TITLE: upstream $TARGET_VERSION"
+  body="$body
+
+| | |
+| --- | --- |
+| Upstream release being taken | ${TARGET_VERSION:-unknown} |
+| \`$WORK\` was built on | ${BASE_VERSION:-unknown} |
+| Last fork release | ${last:-none} |
+| Host / time | $(hostname) / $(date +'%Y-%m-%d %H:%M:%S %Z') |"
+
   num=$(open_issue_number)
   if [ -n "${num:-}" ] && [ "$num" != "null" ]; then
     out=$(gh issue comment "$num" --repo "$GH_REPO" --body "$body" 2>&1) ||
       log "notify: could not comment on issue #$num: $out"
+    # One issue spans repeated failures, so keep its title naming the release now failing.
+    out=$(gh issue edit "$num" --repo "$GH_REPO" --title "$title" 2>&1) ||
+      log "notify: could not retitle issue #$num: $out"
   else
-    out=$(gh issue create --repo "$GH_REPO" --title "$ISSUE_TITLE" --body "$body" 2>&1) ||
+    out=$(gh issue create --repo "$GH_REPO" --title "$title" --body "$body" 2>&1) ||
       log "notify: could not open an issue ($out). Enable issues: gh repo edit $GH_REPO --enable-issues"
   fi
 }
@@ -208,10 +242,25 @@ preflight() {
 # ---------------------------------------------------------------- pipeline steps
 
 rebase_onto_latest() {
-  local rc
+  local rc version stopped files
   bash scripts/sync-release.sh --check; rc=$?
+  release_context
   case "$rc" in
-    0) log "Already on the latest upstream release; nothing to do."; return 10 ;;
+    0)
+      # Being on the newest release is not the same as having released it: a rebase that
+      # conflicted and was then resolved by hand leaves the branch on the new release with no
+      # build of it anywhere, and stopping here would leave it that way forever. Only a version
+      # with no fork tag at all qualifies, so ordinary commits on a released version are not
+      # shipped behind anyone's back.
+      git checkout --quiet "$WORK" || die "cannot check out $WORK"
+      version=$(grep '^version' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+      if [ -n "$(git tag -l "$version-ShabbyFork-build*")" ]; then
+        log "Already on the latest upstream release and it has been released; nothing to do."
+        return 10
+      fi
+      log "On upstream $version but nothing has been released for it (rebase resolved by hand?); releasing."
+      return 0
+      ;;
     1) log "A newer upstream release exists; continuing." ;;
     *) die "release check failed (exit $rc)" ;;
   esac
@@ -222,9 +271,19 @@ rebase_onto_latest() {
   case "$rc" in
     0) log "Rebased onto the new release." ;;
     2)
-      # sync-release leaves the rebase in progress on purpose, for a human to resolve.
+      # sync-release leaves the rebase in progress on purpose; record what stopped it, then back
+      # out so the checkout is left usable for whoever resolves it.
+      stopped=$(git log -1 --format='`%h` %s' REBASE_HEAD 2>/dev/null || echo unknown)
+      files=$(git diff --name-only --diff-filter=U | sed 's/^/- `/; s/$/`/')
       git rebase --abort 2>/dev/null
-      notify_failure "Rebase onto the new upstream release hit conflicts, so the pipeline stopped before building. The branch is untouched and a backup branch was left behind. Resolve by hand with \`git release-sync\`."
+      notify_failure "Rebasing \`$WORK\` from **$BASE_VERSION** onto upstream **$TARGET_VERSION** hit conflicts, so the pipeline stopped before building. The branch is untouched and a backup branch was left behind.
+
+Stopped on: $stopped
+
+Conflicted files:
+${files:-- (none listed)}
+
+To resolve: run \`bash scripts/sync-release.sh\`, fix the conflicts, \`git rebase --continue\`, then \`bash scripts/auto-release.sh\`. It sees $TARGET_VERSION has not been released yet and builds, tests, releases and deploys it, closing this issue."
       return 11
       ;;
     *) die "rebase failed (exit $rc)" ;;
