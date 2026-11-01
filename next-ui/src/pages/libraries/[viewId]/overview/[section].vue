@@ -26,6 +26,15 @@
         :sort-active="sort"
         @selection="(_val, event) => toggleSelect(event as MouseEvent)"
       />
+      <ReadlistCard
+        v-else-if="kind === 'readlist'"
+        :read-list="item as ReadListDto"
+        stretch-poster
+        :selected="isSelected"
+        :pre-select="preSelect"
+        :width="display.xs.value ? 'auto' : appStore.gridCardWidth"
+        @selection="(_val, event) => toggleSelect(event as MouseEvent)"
+      />
       <BookCard
         v-else
         :book="item as BookDto"
@@ -52,7 +61,14 @@ import { useAppStore } from '@/stores/app'
 import { useOverviewSection } from '@/composables/section'
 import { useGetLibrariesByViewId } from '@/composables/libraries'
 import { useInfiniteQuery } from '@pinia/colada'
-import type { BookDto, PageBookDto, PageSeriesDto, SeriesDto } from '@/generated/openapi'
+import type {
+  BookDto,
+  PageBookDto,
+  PageReadListDto,
+  PageSeriesDto,
+  ReadListDto,
+  SeriesDto,
+} from '@/generated/openapi'
 import type { RouteLocationObject } from '@/types/route'
 
 definePage({
@@ -79,8 +95,8 @@ const { queryOptions, sort, kind } = useOverviewSection(section, libraryIds)
 const { data, hasNextPage, loadNextPage } = useInfiniteQuery(() => queryOptions.value as never)
 
 const items = computed(() => {
-  const pages = data.value?.pages as (PageBookDto | PageSeriesDto)[] | undefined
-  return pages?.flatMap((it) => (it?.content as (BookDto | SeriesDto)[]) ?? []) ?? []
+  const pages = data.value?.pages as (PageBookDto | PageSeriesDto | PageReadListDto)[] | undefined
+  return pages?.flatMap((it) => (it?.content as (BookDto | SeriesDto | ReadListDto)[]) ?? []) ?? []
 })
 
 const parentRoute = computed<RouteLocationObject>(() => ({

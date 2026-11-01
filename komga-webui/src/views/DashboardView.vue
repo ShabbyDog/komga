@@ -84,6 +84,12 @@
                           :selectable="selectedBooks.length === 0"
                           :fixed-item-width="fixedCardWidth"
             />
+            <item-browser v-if="section.type === SectionType.READLIST"
+                          :items="section.loader.items"
+                          nowrap
+                          :selectable="false"
+                          :fixed-item-width="fixedCardWidth"
+            />
           </template>
         </horizontal-scroller>
       </template>
@@ -102,6 +108,7 @@
       </v-fab-transition>
 
       <edit-recommended-dialog
+        :fork-dashboard="forkDashboard"
         v-model="modalEditRecommended"
         :view-config.sync="viewConfig"
         @reset-defaults="resetDefaultView"
@@ -159,9 +166,12 @@ import {
   ClientSettingsRecommendedView,
   ClientSettingsRecommendedViewSection,
   ClientSettingUserUpdateDto,
+  FORK_SECTIONS,
   RECOMMENDED_DEFAULT,
   RecommendedViewSection,
 } from '@/types/komga-clientsettings'
+import {ForkCapability} from '@/services/shabbyfork.service'
+import {ReadListDto} from '@/types/komga-readlists'
 import EditRecommendedDialog from '@/components/dialogs/EditRecommendedDialog.vue'
 
 interface SectionConfig {
@@ -174,6 +184,7 @@ interface SectionConfig {
 enum SectionType {
   SERIES,
   BOOK,
+  READLIST,
 }
 
 export default Vue.extend({
@@ -198,6 +209,10 @@ export default Vue.extend({
       loaderRecentlyUpdatedSeries: undefined as PageLoader<SeriesDto> | undefined,
       loaderRecentlyAddedBooks: undefined as PageLoader<BookDto> | undefined,
       loaderKeepReadingBooks: undefined as PageLoader<BookDto> | undefined,
+      // ShabbyFork: rows that only a fork server offers, and whether this one does
+      forkDashboard: false,
+      loaderNewOnDeckBooks: undefined as PageLoader<BookDto> | undefined,
+      loaderReadListsInProgress: undefined as PageLoader<ReadListDto> | undefined,
       loaderOnDeckBooks: undefined as PageLoader<BookDto> | undefined,
       loaderRecentlyReleasedBooks: undefined as PageLoader<BookDto> | undefined,
       loaderRecentlyReadBooks: undefined as PageLoader<BookDto> | undefined,
@@ -229,11 +244,12 @@ export default Vue.extend({
     this.$eventHub.$off(READPROGRESS_SERIES_CHANGED, this.readProgressSeriesChanged)
     this.$eventHub.$off(READPROGRESS_SERIES_DELETED, this.readProgressSeriesChanged)
   },
-  mounted() {
+  async mounted() {
     if (this.individualLibrary) this.$store.commit('setLibraryRoute', {
       id: this.libraryId,
       route: LIBRARY_ROUTE.RECOMMENDED,
     })
+    this.forkDashboard = await this.$shabbyfork.hasCapability(ForkCapability.DASHBOARD_ROWS)
     this.setupLoaders(this.libraryId)
     this.loadAll()
   },
@@ -310,7 +326,9 @@ export default Vue.extend({
         (this.loaderKeepReadingBooks == undefined || this.loaderKeepReadingBooks?.items.length === 0) &&
         (this.loaderOnDeckBooks == undefined || this.loaderOnDeckBooks?.items.length === 0) &&
         (this.loaderRecentlyReleasedBooks == undefined || this.loaderRecentlyReleasedBooks?.items.length === 0) &&
-        (this.loaderRecentlyReadBooks == undefined || this.loaderRecentlyReadBooks?.items.length === 0)
+        (this.loaderRecentlyReadBooks == undefined || this.loaderRecentlyReadBooks?.items.length === 0) &&
+        (this.loaderNewOnDeckBooks == undefined || this.loaderNewOnDeckBooks?.items.length === 0) &&
+        (this.loaderReadListsInProgress == undefined || this.loaderReadListsInProgress?.items.length === 0)
     },
     individualLibrary(): boolean {
       return this.libraryId !== LIBRARIES_ALL
@@ -327,6 +345,7 @@ export default Vue.extend({
       this.loadAll(true)
     },
     hasSection(section: RecommendedViewSection): boolean {
+      if (FORK_SECTIONS.includes(section) && !this.forkDashboard) return false
       return this.viewConfig.sections.some(it => it.section === section)
     },
     getSectionConfig(section: RecommendedViewSection): SectionConfig | undefined {
@@ -378,6 +397,19 @@ export default Vue.extend({
             value: section,
             itemContext: [ItemContext.SHOW_SERIES],
           }
+        case RecommendedViewSection.NEW_ON_DECK:
+          return {
+            loader: this.loaderNewOnDeckBooks,
+            type: SectionType.BOOK,
+            value: section,
+            itemContext: [ItemContext.SHOW_SERIES],
+          }
+        case RecommendedViewSection.READLISTS_IN_PROGRESS:
+          return {
+            loader: this.loaderReadListsInProgress,
+            type: SectionType.READLIST,
+            value: section,
+          }
         default:
           return undefined
       }
@@ -404,6 +436,8 @@ export default Vue.extend({
       else if (this.loaderOnDeckBooks?.items.some(b => b.id === event.bookId)) this.reload()
       else if (this.loaderRecentlyReleasedBooks?.items.some(b => b.id === event.bookId)) this.reload()
       else if (this.loaderRecentlyReadBooks?.items.some(b => b.id === event.bookId)) this.reload()
+      else if (this.loaderNewOnDeckBooks?.items.some(b => b.id === event.bookId)) this.reload()
+      else if (this.loaderReadListsInProgress?.items.some(rl => rl.bookIds.includes(event.bookId))) this.reload()
     },
     readProgressSeriesChanged(event: ReadProgressSeriesSseDto) {
       if (this.loaderRecentlyUpdatedSeries?.items.some(s => s.id === event.seriesId)) this.reload()
@@ -420,15 +454,28 @@ export default Vue.extend({
           requestLibraries.map((it: string) => new SearchConditionLibraryId(new SearchOperatorIs(it))),
         ))
 
+      // ShabbyFork: on a fork server these two rows leave out reading-list reads
       this.loaderKeepReadingBooks = this.hasSection(RecommendedViewSection.KEEP_READING) ? new PageLoader<BookDto>(
-        {sort: ['readProgress.readDate,desc']},
-        (pageable: PageRequest) => this.$komgaBooks.getBooksList({
-          condition: new SearchConditionAllOfBook([...baseBookConditions, new SearchConditionReadStatus(new SearchOperatorIs(ReadStatus.IN_PROGRESS))]),
-        } as BookSearch, pageable),
+        this.forkDashboard ? {} : {sort: ['readProgress.readDate,desc']},
+        this.forkDashboard
+          ? (pageable: PageRequest) => this.$shabbyfork.getKeepReading(requestLibraries, pageable)
+          : (pageable: PageRequest) => this.$komgaBooks.getBooksList({
+            condition: new SearchConditionAllOfBook([...baseBookConditions, new SearchConditionReadStatus(new SearchOperatorIs(ReadStatus.IN_PROGRESS))]),
+          } as BookSearch, pageable),
       ) : undefined
       this.loaderOnDeckBooks = this.hasSection(RecommendedViewSection.ON_DECK) ? new PageLoader<BookDto>(
         {},
-        (pageable: PageRequest) => this.$komgaBooks.getBooksOnDeck(requestLibraries, pageable),
+        this.forkDashboard
+          ? (pageable: PageRequest) => this.$shabbyfork.getOnDeck(requestLibraries, pageable)
+          : (pageable: PageRequest) => this.$komgaBooks.getBooksOnDeck(requestLibraries, pageable),
+      ) : undefined
+      this.loaderNewOnDeckBooks = this.hasSection(RecommendedViewSection.NEW_ON_DECK) ? new PageLoader<BookDto>(
+        {},
+        (pageable: PageRequest) => this.$shabbyfork.getNewOnDeck(requestLibraries, pageable),
+      ) : undefined
+      this.loaderReadListsInProgress = this.hasSection(RecommendedViewSection.READLISTS_IN_PROGRESS) ? new PageLoader<ReadListDto>(
+        {},
+        (pageable: PageRequest) => this.$shabbyfork.getReadListsInProgress(pageable),
       ) : undefined
       this.loaderRecentlyAddedBooks = this.hasSection(RecommendedViewSection.RECENTLY_ADDED_BOOKS) ? new PageLoader<BookDto>(
         {sort: ['createdDate,desc']},
@@ -473,6 +520,8 @@ export default Vue.extend({
           this.loaderRecentlyAddedSeries?.reload(),
           this.loaderRecentlyUpdatedSeries?.reload(),
           this.loaderRecentlyReadBooks?.reload(),
+          this.loaderNewOnDeckBooks?.reload(),
+          this.loaderReadListsInProgress?.reload(),
         ]).then(() => {
           this.loading = false
         })
@@ -485,6 +534,8 @@ export default Vue.extend({
           this.loaderRecentlyAddedSeries?.loadNext(),
           this.loaderRecentlyUpdatedSeries?.loadNext(),
           this.loaderRecentlyReadBooks?.loadNext(),
+          this.loaderNewOnDeckBooks?.loadNext(),
+          this.loaderReadListsInProgress?.loadNext(),
         ]).then(() => {
           this.loading = false
         })

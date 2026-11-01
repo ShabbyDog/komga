@@ -137,12 +137,20 @@ export enum RecommendedViewSection {
   RECENTLY_ADDED_SERIES = 'RECENTLY_ADDED_SERIES',
   RECENTLY_UPDATED_SERIES = 'RECENTLY_UPDATED_SERIES',
   RECENTLY_READ_BOOKS = 'RECENTLY_READ_BOOKS',
+  // ShabbyFork: only shown when the server offers the fork's dashboard rows
+  NEW_ON_DECK = 'NEW_ON_DECK',
+  READLISTS_IN_PROGRESS = 'READLISTS_IN_PROGRESS',
 }
+
+// ShabbyFork: sections that exist only on a fork server
+export const FORK_SECTIONS = [RecommendedViewSection.NEW_ON_DECK, RecommendedViewSection.READLISTS_IN_PROGRESS]
 
 export const RECOMMENDED_DEFAULT = {
   sections: [
     {section: RecommendedViewSection.KEEP_READING},
     {section: RecommendedViewSection.ON_DECK},
+    {section: RecommendedViewSection.NEW_ON_DECK},
+    {section: RecommendedViewSection.READLISTS_IN_PROGRESS},
     {section: RecommendedViewSection.RECENTLY_RELEASED_BOOKS},
     {section: RecommendedViewSection.RECENTLY_ADDED_BOOKS},
     {section: RecommendedViewSection.RECENTLY_ADDED_SERIES},
