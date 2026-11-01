@@ -113,13 +113,16 @@ to cover it are disabled (see below). macOS is covered by neither.
 ./gradlew :komga:test ktlintCheck
 
 # Linux, from the same checkout, via WSL
-git archive --format=tar HEAD | wsl -d Ubuntu -- bash -lc 'rm -rf ~/komga-linux && mkdir -p ~/komga-linux && tar x -C ~/komga-linux'
-wsl -d Ubuntu -- bash -lc 'cd ~/komga-linux && sed -i "s/\r$//" gradlew && git init -q && git add -A && git -c user.email=t@t.local -c user.name=wsl commit -qm snapshot'
-wsl -d Ubuntu -- bash -lc 'cd ~/komga-linux && JAVA_HOME=$HOME/jdk21 PATH=$HOME/jdk21/bin:$PATH ./gradlew :komga:test ktlintCheck --console=plain'
+git archive --format=tar HEAD | wsl -d Ubuntu --exec bash -lc 'rm -rf ~/komga-linux && mkdir -p ~/komga-linux && tar x -C ~/komga-linux'
+wsl -d Ubuntu --exec bash -lc 'cd ~/komga-linux && sed -i "s/\r$//" gradlew && git init -q && git add -A && git -c user.email=t@t.local -c user.name=wsl commit -qm snapshot'
+wsl -d Ubuntu --exec bash -lc 'cd ~/komga-linux && JAVA_HOME=$HOME/jdk21 PATH=$HOME/jdk21/bin:/usr/local/bin:/usr/bin:/bin ./gradlew :komga:test ktlintCheck --console=plain'
 ```
 
 The WSL side needs JDK 21+. `~/jdk21` is a Temurin tarball extracted by hand — no root, no
-apt. Three things that otherwise waste an hour:
+apt. Four things that otherwise waste an hour:
+
+- Use `wsl --exec`, not `wsl --`. With `--`, WSL hands the command to a shell that expands
+  `$PATH` itself, and the Windows half of it (`Program Files (x86)`) is a syntax error there.
 
 - `gradlew` arrives with CRLF from the Windows checkout and dies with
   `bad interpreter: /bin/sh^M`. Strip it: `sed -i 's/\r$//' gradlew`.
