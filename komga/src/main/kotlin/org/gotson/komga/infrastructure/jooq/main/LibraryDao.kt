@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.net.URL
 import java.time.LocalDateTime
 import java.time.ZoneId
+import org.gotson.komga.jooq.shabbyfork.Tables as ShabbyforkTables
 
 @Component
 class LibraryDao(
@@ -25,6 +26,9 @@ class LibraryDao(
   private val l = Tables.LIBRARY
   private val ul = Tables.USER_LIBRARY_SHARING
   private val le = Tables.LIBRARY_EXCLUSIONS
+
+  // ShabbyFork: fork-only library options live in shabbyfork.sqlite, so stock Komga can run on database.sqlite
+  private val ls = ShabbyforkTables.LIBRARY_SETTINGS
 
   override fun findByIdOrNull(libraryId: String): Library? =
     findOne(libraryId)
@@ -57,18 +61,22 @@ class LibraryDao(
       .from(l)
       .leftJoin(le)
       .onKey()
+      .leftJoin(ls)
+      .on(ls.LIBRARY_ID.eq(l.ID))
 
   private fun ResultQuery<Record>.fetchAndMap(): Collection<Library> =
     this
-      .fetchGroups({ it.into(l) }, { it.into(le) })
-      .map { (lr, ler) ->
-        lr.toDomain(ler.mapNotNull { it.exclusion }.toSet())
+      .fetchGroups({ it.into(l) to (it.get(ls.SCAN_FS_CHANGE) ?: false) }, { it.into(le) })
+      .map { (key, ler) ->
+        val (lr, scanFsChange) = key
+        lr.toDomain(ler.mapNotNull { it.exclusion }.toSet(), scanFsChange)
       }
 
   @Transactional
   override fun delete(libraryId: String) {
     dslRW.deleteFrom(le).where(le.LIBRARY_ID.eq(libraryId)).execute()
     dslRW.deleteFrom(ul).where(ul.LIBRARY_ID.eq(libraryId)).execute()
+    dslRW.deleteFrom(ls).where(ls.LIBRARY_ID.eq(libraryId)).execute()
     dslRW.deleteFrom(l).where(l.ID.eq(libraryId)).execute()
   }
 
@@ -76,6 +84,7 @@ class LibraryDao(
   override fun deleteAll() {
     dslRW.deleteFrom(le).execute()
     dslRW.deleteFrom(ul).execute()
+    dslRW.deleteFrom(ls).execute()
     dslRW.deleteFrom(l).execute()
   }
 
@@ -101,7 +110,6 @@ class LibraryDao(
       .set(l.SCAN_PDF, library.scanPdf)
       .set(l.SCAN_EPUB, library.scanEpub)
       .set(l.SCAN_STARTUP, library.scanOnStartup)
-      .set(l.SCAN_FS_CHANGE, library.scanOnFilesystemChange)
       .set(l.SCAN_INTERVAL, library.scanInterval.toString())
       .set(l.REPAIR_EXTENSIONS, library.repairExtensions)
       .set(l.CONVERT_TO_CBZ, library.convertToCbz)
@@ -116,6 +124,7 @@ class LibraryDao(
       .execute()
 
     dslRW.insertDirectoryExclusions(library)
+    dslRW.upsertSettings(library)
   }
 
   @Transactional
@@ -139,7 +148,6 @@ class LibraryDao(
       .set(l.SCAN_PDF, library.scanPdf)
       .set(l.SCAN_EPUB, library.scanEpub)
       .set(l.SCAN_STARTUP, library.scanOnStartup)
-      .set(l.SCAN_FS_CHANGE, library.scanOnFilesystemChange)
       .set(l.SCAN_INTERVAL, library.scanInterval.toString())
       .set(l.REPAIR_EXTENSIONS, library.repairExtensions)
       .set(l.CONVERT_TO_CBZ, library.convertToCbz)
@@ -157,6 +165,7 @@ class LibraryDao(
 
     dslRW.deleteFrom(le).where(le.LIBRARY_ID.eq(library.id)).execute()
     dslRW.insertDirectoryExclusions(library)
+    dslRW.upsertSettings(library)
   }
 
   override fun count(): Long = dslRO.fetchCount(l).toLong()
@@ -176,40 +185,53 @@ class LibraryDao(
     }
   }
 
-  private fun LibraryRecord.toDomain(directoryExclusions: Set<String>) =
-    Library(
-      name = name,
-      root = URL(root),
-      importComicInfoBook = importComicinfoBook,
-      importComicInfoSeries = importComicinfoSeries,
-      importComicInfoCollection = importComicinfoCollection,
-      importComicInfoReadList = importComicinfoReadlist,
-      importComicInfoSeriesAppendVolume = importComicinfoSeriesAppendVolume,
-      importEpubBook = importEpubBook,
-      importEpubSeries = importEpubSeries,
-      importMylarSeries = importMylarSeries,
-      importLocalArtwork = importLocalArtwork,
-      importBarcodeIsbn = importBarcodeIsbn,
-      scanForceModifiedTime = scanForceModifiedTime,
-      scanCbx = scanCbx,
-      scanPdf = scanPdf,
-      scanEpub = scanEpub,
-      scanOnStartup = scanStartup,
-      scanOnFilesystemChange = scanFsChange,
-      scanInterval = Library.ScanInterval.valueOf(scanInterval),
-      scanDirectoryExclusions = directoryExclusions,
-      repairExtensions = repairExtensions,
-      convertToCbz = convertToCbz,
-      emptyTrashAfterScan = emptyTrashAfterScan,
-      seriesCover = Library.SeriesCover.valueOf(seriesCover),
-      hashFiles = hashFiles,
-      hashPages = hashPages,
-      hashKoreader = hashKoreader,
-      analyzeDimensions = analyzeDimensions,
-      oneshotsDirectory = oneshotsDirectory,
-      unavailableDate = unavailableDate,
-      id = id,
-      createdDate = createdDate.toCurrentTimeZone(),
-      lastModifiedDate = lastModifiedDate.toCurrentTimeZone(),
-    )
+  private fun DSLContext.upsertSettings(library: Library) {
+    this
+      .insertInto(ls)
+      .set(ls.LIBRARY_ID, library.id)
+      .set(ls.SCAN_FS_CHANGE, library.scanOnFilesystemChange)
+      .onConflict(ls.LIBRARY_ID)
+      .doUpdate()
+      .set(ls.SCAN_FS_CHANGE, library.scanOnFilesystemChange)
+      .execute()
+  }
+
+  private fun LibraryRecord.toDomain(
+    directoryExclusions: Set<String>,
+    scanOnFilesystemChange: Boolean,
+  ) = Library(
+    name = name,
+    root = URL(root),
+    importComicInfoBook = importComicinfoBook,
+    importComicInfoSeries = importComicinfoSeries,
+    importComicInfoCollection = importComicinfoCollection,
+    importComicInfoReadList = importComicinfoReadlist,
+    importComicInfoSeriesAppendVolume = importComicinfoSeriesAppendVolume,
+    importEpubBook = importEpubBook,
+    importEpubSeries = importEpubSeries,
+    importMylarSeries = importMylarSeries,
+    importLocalArtwork = importLocalArtwork,
+    importBarcodeIsbn = importBarcodeIsbn,
+    scanForceModifiedTime = scanForceModifiedTime,
+    scanCbx = scanCbx,
+    scanPdf = scanPdf,
+    scanEpub = scanEpub,
+    scanOnStartup = scanStartup,
+    scanOnFilesystemChange = scanOnFilesystemChange,
+    scanInterval = Library.ScanInterval.valueOf(scanInterval),
+    scanDirectoryExclusions = directoryExclusions,
+    repairExtensions = repairExtensions,
+    convertToCbz = convertToCbz,
+    emptyTrashAfterScan = emptyTrashAfterScan,
+    seriesCover = Library.SeriesCover.valueOf(seriesCover),
+    hashFiles = hashFiles,
+    hashPages = hashPages,
+    hashKoreader = hashKoreader,
+    analyzeDimensions = analyzeDimensions,
+    oneshotsDirectory = oneshotsDirectory,
+    unavailableDate = unavailableDate,
+    id = id,
+    createdDate = createdDate.toCurrentTimeZone(),
+    lastModifiedDate = lastModifiedDate.toCurrentTimeZone(),
+  )
 }

@@ -24,6 +24,8 @@ komga:
   config-dir: \${user.home}/.komga
   tasks-db:
     file: \${komga.config-dir}/tasks.sqlite
+  shabbyfork-db:
+    file: \${komga.config-dir}/shabbyfork.sqlite
   sessions-db:
     file: \${komga.config-dir}/sessions.sqlite
     pragmas:

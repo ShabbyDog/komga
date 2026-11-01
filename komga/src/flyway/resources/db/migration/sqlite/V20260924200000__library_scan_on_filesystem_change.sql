@@ -1,2 +1,0 @@
-ALTER TABLE LIBRARY
-    add column SCAN_FS_CHANGE boolean NOT NULL DEFAULT 0;
