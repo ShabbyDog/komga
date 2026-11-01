@@ -95,6 +95,18 @@ bundle can be produced on Windows at all.
 They are now loaded with Vite's own glob import, which returns the same record of
 lazy import functions without the platform bug. Behaviour is unchanged everywhere.
 
+## Updates screen
+
+### Show the fork's changelog on the updates screen
+
+*Added in 1.27.0-ShabbyFork.*
+
+The updates screen lists the releases of upstream Komga, which say nothing about what this fork
+adds, so a fork server gave no way to see which of its features came from the fork.
+
+Both the web UI and the new UI now show this changelog above the list of upstream releases.
+It is built into the jar, so it always describes the build the server is running.
+
 ## Archive formats
 
 ### Support 7z compressed comic books
