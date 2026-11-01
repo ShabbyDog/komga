@@ -30,6 +30,19 @@ a client that does not know about contexts can never leave a wrong one behind.
 `read-context`, so clients can tell a fork from stock Komga and enable each feature only where
 it exists. Stock Komga's endpoints are unchanged.
 
+### Import reading-list contexts kept by a client
+
+*Added in 1.29.2-ShabbyFork-build4.*
+
+A client that tracked reading-list reads itself, before the server could, can hand that history
+over once with `POST /api/v1/fork/read-contexts`, offered as `read-context-import`. Each
+context names the book, the reading list, and the progress the client recorded for that read.
+
+The server takes a context only if your current progress on the book is still that read, the
+same page and completion. If the progress has changed since, on any client, the read stays a
+series read rather than being guessed at. The reading list must contain the book, and you must
+be able to see both. The response says how many were taken and how many skipped.
+
 ### Dashboard rows that keep reading lists apart
 
 *Added in 1.29.2-ShabbyFork-build3.*
