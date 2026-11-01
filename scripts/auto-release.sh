@@ -5,6 +5,7 @@
 #   bash scripts/auto-release.sh --check      # is there a newer upstream release? change nothing
 #   bash scripts/auto-release.sh --dry-run     # rebase, build and test, but do not tag, push or deploy
 #   bash scripts/auto-release.sh --deploy-only # rehearse stop/backup/start/health on the installed jar
+#   bash scripts/auto-release.sh --release-fork # release our own new commits on the current upstream release
 #   bash scripts/auto-release.sh               # the real thing
 #
 # Exit codes: 0 = nothing to do, or released and deployed
@@ -757,6 +758,59 @@ released_note() {
   fi
 }
 
+# ---------------------------------------------------------------- fork-only release
+
+# The nightly run only ever releases on a new upstream release; our own commits on an upstream
+# release we have already shipped are never released behind anyone's back. This is how they ship:
+# started by a human, and otherwise exactly the nightly path -- same tests, the next build number,
+# a GitHub release, and the same stop/backup/deploy/rollback.
+release_fork() {
+  local version last range commits jar tag rc
+  git checkout --quiet "$WORK" || die "cannot check out $WORK"
+  release_context
+  version=$(grep '^version' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+  TARGET_VERSION=$version
+  if [ "$BASE_VERSION" != "$version" ]; then
+    notify_failure "\`--release-fork\` needs \`$WORK\` to sit on an upstream release tag, but it is built on $BASE_VERSION while gradle.properties says $version. Nothing was built."
+    return 1
+  fi
+
+  last=$(git tag -l "$version-ShabbyFork-build*" --sort=-v:refname | head -1)
+  if [ -n "$last" ] && [ "$(git rev-parse "$last^{commit}")" = "$(git rev-parse "$WORK")" ]; then
+    log "$WORK is exactly $last; nothing new to release."
+    return 0
+  fi
+  if [ -n "$last" ] && git merge-base --is-ancestor "$last" "$WORK"; then range="$last..$WORK"; else range="$version..$WORK"; fi
+  commits=$(git log --reverse --format='- %s' "$range")
+  [ -n "$PENDING_RELEASES" ] && log "Note: upstream releases are waiting ($PENDING_RELEASES); this releases the current base only, the nightly run takes those."
+  RELEASE_NOTES_EXTRA="
+
+**Fork-only release.** No upstream change: this is upstream $version again, with fork commits ${last:+not in $last}${last:-not released before}:
+
+$commits"
+
+  if ! build_and_test; then
+    notify_failure "\`--release-fork\`: build or tests failed on upstream **$version**. Nothing was tagged, published or deployed."
+    return 1
+  fi
+  jar=$(find_built_jar) || { notify_failure "\`--release-fork\`: the build reported success but no jar was found."; return 3; }
+  tag="$(basename "$jar" .jar | sed "s/^komga-//")"
+  log "Built $jar (tag $tag)"
+
+  if ! publish_release "$jar" "$tag" "$version" true; then
+    notify_failure "\`--release-fork\`: built and tested **$tag**, but publishing the GitHub release failed. Nothing was deployed."
+    return 1
+  fi
+  log "Released $tag"
+
+  deploy "$jar"; rc=$?
+  case "$rc" in
+    0) notify_success "Released **$tag** (fork-only) and upgraded production to it. Health check passed."; return 0 ;;
+    2) notify_failure "Released **$tag** (fork-only), but production did not come up healthy and was rolled back to the previous jar **and database**."; return 2 ;;
+    *) notify_failure "Released **$tag** (fork-only), but the deploy step failed before it could swap anything. Production should be untouched - check \`systemctl status $KOMGA_SERVICE\`."; return 3 ;;
+  esac
+}
+
 # ---------------------------------------------------------------- main
 
 main() {
@@ -794,6 +848,11 @@ main() {
       2) notify_failure "A deploy rehearsal (\`--deploy-only\`) failed its health check and was rolled back. The jar was unchanged, so this points at the service or the health check rather than at a build."; exit 2 ;;
       *) die "deploy rehearsal failed before it changed anything" ;;
     esac
+  fi
+
+  if [ "$mode" = "--release-fork" ]; then
+    release_fork
+    exit $?
   fi
 
   local released="" jar_out="" fail_rc=0 more dry_note=""

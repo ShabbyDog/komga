@@ -145,6 +145,7 @@ bash scripts/auto-release.sh --preflight  # check the environment, change nothin
 bash scripts/auto-release.sh --check      # is there a newer upstream release?
 bash scripts/auto-release.sh --dry-run     # rebase, build and test, but do not publish or deploy
 bash scripts/auto-release.sh --deploy-only # rehearse stop/backup/start/health on the installed jar
+bash scripts/auto-release.sh --release-fork # release our own new commits on the current upstream release
 bash scripts/auto-release.sh               # the real thing
 ```
 
@@ -154,6 +155,14 @@ moved is judged against what the checkout last knew of it, so work that exists o
 server (a rebase resolved by hand there, a run whose push failed) is kept. Origin moved and the
 server has nothing of its own: the branch is moved to origin, leaving a
 `backup/ShabbyFork-<stamp>-before-origin` branch. Both moved: the run stops and opens an issue.
+
+**The timer only ever releases on a new upstream release.** Our own commits on a release we have
+already shipped are never released behind anyone's back; they ship with the next upstream
+release, or when a human runs `--release-fork` on the server after pushing. That mode is the
+nightly path minus the rebase: the same tests, the next build number, a GitHub release noting
+it is fork-only and listing the commits, then the same stop, backup, deploy and rollback. It
+refuses when `ShabbyFork` is not on a release tag, and does nothing when the branch is exactly
+its last fork release.
 
 Rehearse both halves before trusting the timer. `--dry-run` builds and tests even when there is
 nothing new upstream, so it exercises the build without waiting for a release. `--deploy-only`
@@ -178,7 +187,7 @@ What it refuses to do:
 Two things it cannot do, by construction:
 
 - **It only tests Linux.** The dual-platform rule above still needs a Windows run, which is
-  ours to do when we write a change; the pipeline's job is upstream rebases.
+  ours to do when we write a change, before pushing it and running `--release-fork`.
 - **It cannot resolve conflicts or judge upstream's changes.** A release that needs either
   stops and waits.
 
