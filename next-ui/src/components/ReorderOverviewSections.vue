@@ -68,14 +68,28 @@
 <script setup lang="ts">
 import { VueDraggable } from 'vue-draggable-plus'
 import { type ClientSettingUserOverviewSection } from '@/types/ClientSettingsUser'
-import { overviewSectionMessages, OverviewSectionsDefault } from '@/types/OverviewSection'
+import {
+  overviewSectionMessages,
+  OverviewSectionsDefault,
+  OverviewSectionsFork,
+} from '@/types/OverviewSection'
+import { useForkCapability } from '@/composables/shabbyfork'
+import { ForkCapability } from '@/colada/shabbyfork'
 import { watchDeep } from '@vueuse/core'
 import { deepEqual } from 'fast-equals'
 
 const model = defineModel<ClientSettingUserOverviewSection[]>({ required: true })
 
-const missingSections = computed(() =>
+// ShabbyFork: the fork's sections are only offered when the server is a fork
+const { available: forkRows } = useForkCapability(ForkCapability.DashboardRows)
+const availableDefaults = computed(() =>
   OverviewSectionsDefault.filter(
+    (it) => forkRows.value || !OverviewSectionsFork.includes(it.section),
+  ),
+)
+
+const missingSections = computed(() =>
+  availableDefaults.value.filter(
     (section) => !model.value.some((it) => section.section === it.section),
   ),
 )
@@ -91,7 +105,7 @@ watchDeep(localSections, (newVal) => {
   model.value = newVal.filter((it) => it.enabled).map(({ enabled, ...rest }) => rest)
 })
 
-const defaultSections = OverviewSectionsDefault.map((it) => ({ enabled: true, ...it }))
+const defaultSections = availableDefaults.value.map((it) => ({ enabled: true, ...it }))
 
 function restoreDefaults() {
   localSections.value = structuredClone(defaultSections)
