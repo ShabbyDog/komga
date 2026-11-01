@@ -67,7 +67,9 @@
 </template>
 
 <script lang="ts" setup>
-import { OverviewSectionsDefault } from '@/types/OverviewSection'
+import { OverviewSectionsDefault, OverviewSectionsFork } from '@/types/OverviewSection'
+import { useForkCapability } from '@/composables/shabbyfork'
+import { ForkCapability } from '@/colada/shabbyfork'
 import PosterSizeSlider from '@/components/PosterSizeSlider.vue'
 import { useClientSettingsUser, useUpdateClientSettingsUser } from '@/colada/client-settings'
 import {
@@ -97,12 +99,18 @@ provide(
 const isExactParentRoute = computed(() => route.name === '/libraries/[viewId]/overview')
 
 const { userSettings } = useClientSettingsUser()
-const overviewSections = computed(() => {
+const savedSections = computed(() => {
   return (
     userSettings.value[ClientSettingUser.NextUIOverviewSections]?.[libraryViewId] ??
     OverviewSectionsDefault
   )
 })
+// ShabbyFork: a stock server cannot show the fork's sections, so they are left out here, but
+// kept in the saved layout for when the server is a fork again
+const { available: forkRows } = useForkCapability(ForkCapability.DashboardRows)
+const isAvailable = (it: ClientSettingUserOverviewSection) =>
+  forkRows.value || !OverviewSectionsFork.includes(it.section)
+const overviewSections = computed(() => savedSections.value.filter(isAvailable))
 
 const childRefs = ref<InstanceType<typeof OverviewSection>[]>([])
 const allNoData = computed(
@@ -138,7 +146,10 @@ function editSections() {
 
     setLoading(true)
 
-    const updatedSections = dialogConfirmEdit.value.record as ClientSettingUserOverviewSection[]
+    const updatedSections = [
+      ...(dialogConfirmEdit.value.record as ClientSettingUserOverviewSection[]),
+      ...savedSections.value.filter((it) => !isAvailable(it)),
+    ]
     const newSettings = { ...userSettings.value[ClientSettingUser.NextUIOverviewSections] }
     newSettings[libraryViewId] = updatedSections
 

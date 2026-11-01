@@ -55,7 +55,9 @@ Komga's endpoints do:
   through and not finished, most recently read first. A book in two lists, read through one,
   starts only that one.
 
-They are offered as `dashboard-rows` in the capabilities. The web UIs do not use them yet.
+They are offered as `dashboard-rows` in the capabilities.
+
+Both web UIs use them on a fork server. Their Keep Reading and On Deck rows become the fork's, and two new rows, New Books On Deck and Reading Lists In Progress, are part of the default dashboard and can be added to a saved one from its section editor. The web reader tells the server when a book is read through a reading list, so the rows know. Against stock Komga both UIs behave exactly as before, and a layout saved on a fork keeps its fork rows, hidden, until the server is a fork again.
 
 ## Database
 

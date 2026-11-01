@@ -20,6 +20,15 @@
           :sort-active="sort"
           @selection="toggleSelect"
         />
+        <ReadlistCard
+          v-else-if="kind === 'readlist'"
+          :read-list="item as ReadListDto"
+          stretch-poster
+          :selected="isSelected"
+          :pre-select="preSelect"
+          :width="cardWidth"
+          @selection="toggleSelect"
+        />
         <BookCard
           v-else
           :book="item as BookDto"
@@ -40,7 +49,14 @@
 import { type LibraryViewId } from '@/types/libraries'
 import { useGetLibrariesByViewId } from '@/composables/libraries'
 import { useOverviewSection } from '@/composables/section'
-import type { BookDto, PageBookDto, PageSeriesDto, SeriesDto } from '@/generated/openapi'
+import type {
+  BookDto,
+  PageBookDto,
+  PageReadListDto,
+  PageSeriesDto,
+  ReadListDto,
+  SeriesDto,
+} from '@/generated/openapi'
 import { useInfiniteQuery } from '@pinia/colada'
 import { overviewSectionMessages } from '@/types/OverviewSection'
 import { useAppStore } from '@/stores/app'
@@ -59,19 +75,24 @@ const { libraryIds } = useGetLibrariesByViewId(props.libraryViewId)
 
 const cardWidth = computed(() => (display.smAndUp.value ? appStore.gridCardWidth : 130))
 
-const { queryOptions, sort, kind } = useOverviewSection(props.section.section, libraryIds)
+const { queryOptions, sort, kind, available } = useOverviewSection(
+  props.section.section,
+  libraryIds,
+)
 
 const { data, hasNextPage, loadNextPage, isPending } = useInfiniteQuery(
   () => queryOptions.value as never,
 )
 
 const items = computed(() => {
-  const pages = data.value?.pages as (PageBookDto | PageSeriesDto)[] | undefined
-  return pages?.flatMap((it) => (it?.content as (BookDto | SeriesDto)[]) ?? []) ?? []
+  const pages = data.value?.pages as (PageBookDto | PageSeriesDto | PageReadListDto)[] | undefined
+  return pages?.flatMap((it) => (it?.content as (BookDto | SeriesDto | ReadListDto)[]) ?? []) ?? []
 })
 
 const hasNoData = computed(() => {
-  const pages = data.value?.pages as (PageBookDto | PageSeriesDto)[] | undefined
+  // ShabbyFork: a fork-only section on a stock server has nothing, rather than nothing yet
+  if (!available.value) return true
+  const pages = data.value?.pages as (PageBookDto | PageSeriesDto | PageReadListDto)[] | undefined
   const totalElements = pages?.[0]?.totalElements
   if (totalElements === undefined) return undefined
   return totalElements === 0

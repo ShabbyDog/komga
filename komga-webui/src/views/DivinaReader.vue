@@ -901,7 +901,9 @@ export default Vue.extend({
     },
     markProgress: debounce(function (this: any, page: number) {
       if (!this.incognito) {
-        this.$komgaBooks.updateReadProgress(this.bookId, {page: page})
+        // ShabbyFork: a fork server is told which reading list this read is made in, if any
+        const readListId = this.context.origin === ContextOrigin.READLIST ? this.context.id : undefined
+        this.$shabbyfork.updateReadProgress(this.bookId, {page: page}, readListId)
       }
     }, 50),
     downloadCurrentPage() {

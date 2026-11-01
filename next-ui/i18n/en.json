@@ -2219,9 +2219,17 @@
     "defaultMessage": "Keep Reading",
     "description": "Overview section: keep reading"
   },
+  "enum.OverviewSection.new_on_deck": {
+    "defaultMessage": "New Books On Deck",
+    "description": "Overview section: new books on deck, in series that were caught up before they arrived"
+  },
   "enum.OverviewSection.on_deck": {
     "defaultMessage": "On Deck",
     "description": "Overview section: on deck"
+  },
+  "enum.OverviewSection.readlists_in_progress": {
+    "defaultMessage": "Reading Lists In Progress",
+    "description": "Overview section: reading lists in progress"
   },
   "enum.OverviewSection.recently_added_books": {
     "defaultMessage": "Recently Added Books",
