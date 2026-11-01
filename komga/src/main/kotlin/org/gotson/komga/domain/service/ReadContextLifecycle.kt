@@ -3,6 +3,7 @@ package org.gotson.komga.domain.service
 import org.gotson.komga.domain.model.Book
 import org.gotson.komga.domain.model.KomgaUser
 import org.gotson.komga.domain.persistence.ReadContextRepository
+import org.gotson.komga.domain.persistence.ReadProgressRepository
 import org.springframework.stereotype.Component
 
 /**
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component
 class ReadContextLifecycle(
   private val bookLifecycle: BookLifecycle,
   private val readContextRepository: ReadContextRepository,
+  private val readProgressRepository: ReadProgressRepository,
 ) {
   fun markReadProgress(
     book: Book,
@@ -34,5 +36,24 @@ class ReadContextLifecycle(
       readContextRepository.markCurrentProgress(user.id, book.id, readListId)
     else
       readContextRepository.delete(user.id, book.id)
+  }
+
+  /**
+   * Records a context a client kept from before the server could, if the user's current
+   * progress on the book is still the read it describes: the same page and completion. If the
+   * progress has changed since, by any client, the read is left a series read. Returns whether
+   * the context was recorded.
+   */
+  fun importContext(
+    bookId: String,
+    user: KomgaUser,
+    readListId: String,
+    page: Int,
+    completed: Boolean,
+  ): Boolean {
+    val progress = readProgressRepository.findByBookIdAndUserIdOrNull(bookId, user.id) ?: return false
+    if (progress.page != page || progress.completed != completed) return false
+    readContextRepository.markCurrentProgress(user.id, bookId, readListId)
+    return true
   }
 }
