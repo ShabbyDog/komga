@@ -6,6 +6,7 @@ import org.gotson.komga.domain.model.BookPage
 import org.gotson.komga.domain.model.KomgaUser
 import org.gotson.komga.domain.model.Media
 import org.gotson.komga.domain.model.ReadList
+import org.gotson.komga.domain.model.ReadProgress
 import org.gotson.komga.domain.model.makeBook
 import org.gotson.komga.domain.model.makeLibrary
 import org.gotson.komga.domain.model.makeSeries
@@ -36,6 +37,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
+import org.springframework.test.web.servlet.post
 import org.gotson.komga.jooq.shabbyfork.Tables as ShabbyforkTables
 
 /**
@@ -214,6 +216,79 @@ class ShabbyforkControllerTest(
     fun `given an unknown book when marking progress then it is not found`() {
       forkProgress("nope", """{"page": 5}""")
         .andExpect { status { isNotFound() } }
+    }
+  }
+
+  @Nested
+  inner class ImportReadContexts {
+    private fun import(vararg contexts: String) =
+      mockMvc.post("/api/v1/fork/read-contexts") {
+        contentType = MediaType.APPLICATION_JSON
+        content = """{"contexts": [${contexts.joinToString()}]}"""
+      }
+
+    private fun context(
+      bookId: String,
+      page: Int,
+      completed: Boolean,
+      readListId: String = readList.id,
+    ) = """{"bookId": "$bookId", "readListId": "$readListId", "page": $page, "completed": $completed}"""
+
+    @Test
+    @WithMockCustomUser
+    fun `given a user when listing capabilities then the import is offered`() {
+      mockMvc
+        .get("/api/v1/fork/capabilities")
+        .andExpect { jsonPath("$.capabilities") { value(org.hamcrest.Matchers.hasItem("read-context-import")) } }
+    }
+
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given a context matching the current progress when importing then it is recorded`() {
+      readProgressRepository.save(ReadProgress(book.id, user.id, 10, true))
+
+      import(context(book.id, 10, true))
+        .andExpect {
+          status { isOk() }
+          jsonPath("$.imported") { value(1) }
+          jsonPath("$.skipped") { value(0) }
+        }
+
+      assertThat(readContextRepository.findCurrentOrNull(user.id, book.id)?.readListId).isEqualTo(readList.id)
+    }
+
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given progress that has moved on since the context was recorded when importing then it is skipped`() {
+      readProgressRepository.save(ReadProgress(book.id, user.id, 7, false))
+
+      import(context(book.id, 4, false))
+        .andExpect { jsonPath("$.skipped") { value(1) } }
+
+      assertThat(readContextRepository.findCurrentOrNull(user.id, book.id)).isNull()
+    }
+
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given no progress, a book outside the list, or an unknown list when importing then each is skipped`() {
+      readProgressRepository.save(ReadProgress(otherBook.id, user.id, 3, false))
+
+      import(
+        context(book.id, 3, false),
+        context(otherBook.id, 3, false),
+        context(otherBook.id, 3, false, readListId = "nope"),
+      ).andExpect {
+        status { isOk() }
+        jsonPath("$.imported") { value(0) }
+        jsonPath("$.skipped") { value(3) }
+      }
+    }
+
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given an invalid context when importing then it is refused`() {
+      import("""{"bookId": "", "readListId": "${readList.id}", "page": 0, "completed": false}""")
+        .andExpect { status { isBadRequest() } }
     }
   }
 }
