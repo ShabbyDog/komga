@@ -323,6 +323,57 @@ preflight() {
 
 # Moves onto the next upstream release, not the newest: every upstream release gets a fork
 # release of its own, so the two release lists line up. main() loops this until caught up.
+# The checkout here is not the only place the fork is worked on: commits are also pushed to origin
+# from elsewhere, and nothing else brings them here. Without this a run builds whatever this
+# checkout last had, and its push is then refused because origin has moved on underneath it.
+#
+# Whether origin moved is judged against what this checkout last knew of it, not against the local
+# branch, because the local branch is allowed to be ahead: a rebase resolved by hand here, or a run
+# whose push failed, leaves work that exists nowhere else and must not be thrown away. So:
+#   origin unchanged                     -> keep the local branch, whatever it holds
+#   origin moved, nothing local of ours  -> move the local branch to origin (backup branch first)
+#   origin moved, and so did we          -> stop for a human; both sides have work the other lacks
+sync_with_origin() {
+  local old new head backup
+  if [ -d "$(git rev-parse --git-path rebase-merge)" ] || [ -d "$(git rev-parse --git-path rebase-apply)" ]; then
+    log "A rebase is in progress; leaving the checkout to the existing handling and not syncing with origin."
+    return 0
+  fi
+  old=$(git rev-parse --verify --quiet "refs/remotes/origin/$WORK") || old=""
+  log "Fetching origin ..."
+  git fetch --quiet --tags origin "+refs/heads/$WORK:refs/remotes/origin/$WORK" || {
+    notify_failure "Could not fetch \`$WORK\` from origin, so the run stopped before building: it would otherwise build without whatever was pushed there. Check the network and the tags (a fork tag that differs between here and origin makes the fetch refuse)."
+    return 1
+  }
+  new=$(git rev-parse "refs/remotes/origin/$WORK")
+  head=$(git rev-parse "$WORK")
+
+  if [ "$new" = "$head" ] || git merge-base --is-ancestor "$new" "$head"; then
+    return 0
+  fi
+  if [ -n "$old" ] && [ "$new" = "$old" ]; then
+    log "origin/$WORK has not moved; keeping the local $WORK, which has work of its own on top."
+    return 0
+  fi
+  if [ -n "$old" ] && [ "$head" != "$old" ] && ! git merge-base --is-ancestor "$head" "$new"; then
+    notify_failure "\`$WORK\` has moved on origin since this checkout last saw it, and the checkout also has commits of its own that origin lacks, so neither can simply replace the other. The run stopped before building. Compare \`$WORK\` with \`origin/$WORK\` on $(hostname), keep what should survive, and push it."
+    return 1
+  fi
+  if [ -z "$old" ] && ! git merge-base --is-ancestor "$head" "$new"; then
+    notify_failure "This checkout has never seen \`origin/$WORK\`, and the two have diverged, so the run stopped rather than guess which to keep. Compare them on $(hostname) and push what should survive."
+    return 1
+  fi
+
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    notify_failure "\`origin/$WORK\` has new commits, but the checkout on $(hostname) has uncommitted changes, so it was not moved and the run stopped before building."
+    return 1
+  fi
+  backup="backup/$WORK-$(date +%Y%m%d-%H%M%S)-before-origin"
+  git branch "$backup" "$head" || return 1
+  { git checkout --quiet "$WORK" && git reset --quiet --hard "$new"; } || return 1
+  log "Moved $WORK to origin ($(git log -1 --format='%h %s' "$new")); the previous state is on $backup."
+}
+
 rebase_onto_next() {
   local rc version stopped files
   bash scripts/sync-release.sh --check; rc=$?
@@ -539,6 +590,10 @@ build_and_test() {
   # a machine where javac is demonstrably present.
   ./gradlew --stop >/dev/null 2>&1 || true
 
+  # bootJar never removes an older jar, and find_built_jar must not pick up a previous build of the
+  # same upstream version: it would be re-tagged under its old number, or published as new.
+  rm -f komga/build/libs/komga-*.jar
+
   log "Building jar ..."
   ./gradlew :komga:webuiCopyIndex :komga:nextuiCopyIndex :komga:bootJar --console=plain || return 1
 
@@ -717,6 +772,11 @@ main() {
   esac
 
   preflight || die "preflight failed; fix the above first"
+
+  # --deploy-only touches no git state, so only the modes that build sync first.
+  if [ "$mode" != "--deploy-only" ]; then
+    sync_with_origin || exit 1
+  fi
 
   if [ "$CLAUDE_ASSIST" = "1" ] && [ -f scripts/claude-assist.sh ]; then
     CLAUDE_ASSIST_SH=$(mktemp --suffix=-claude-assist.sh) && cp scripts/claude-assist.sh "$CLAUDE_ASSIST_SH" &&
