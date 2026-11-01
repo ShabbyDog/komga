@@ -148,6 +148,13 @@ bash scripts/auto-release.sh --deploy-only # rehearse stop/backup/start/health o
 bash scripts/auto-release.sh               # the real thing
 ```
 
+Every mode that builds first **syncs the checkout with `origin/ShabbyFork`**, since commits are
+pushed there from the Windows checkout and nothing else brings them to the server. Whether origin
+moved is judged against what the checkout last knew of it, so work that exists only on the
+server (a rebase resolved by hand there, a run whose push failed) is kept. Origin moved and the
+server has nothing of its own: the branch is moved to origin, leaving a
+`backup/ShabbyFork-<stamp>-before-origin` branch. Both moved: the run stops and opens an issue.
+
 Rehearse both halves before trusting the timer. `--dry-run` builds and tests even when there is
 nothing new upstream, so it exercises the build without waiting for a release. `--deploy-only`
 runs the stop, backup, install, start and health check against the jar already installed, which
