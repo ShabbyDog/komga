@@ -30,7 +30,32 @@ a client that does not know about contexts can never leave a wrong one behind.
 `read-context`, so clients can tell a fork from stock Komga and enable each feature only where
 it exists. Stock Komga's endpoints are unchanged.
 
-Nothing uses this yet; the dashboard rows built on it come next.
+### Dashboard rows that keep reading lists apart
+
+*Added in 1.29.2-ShabbyFork-build3.*
+
+Komga's Keep reading and On deck treat every read as a series read. Reading a crossover event
+through a reading list therefore filled Keep reading with issues you were reading in the list,
+and finishing one put that series' next issue On deck, though you had no plans to read the
+series. And On deck mixed two different things: series you are partway through, and series
+you had finished until a new issue arrived.
+
+Four endpoints give clients rows built on the reading-list context above. Each starts from
+Komga's own query for the row, so what is in progress or on deck, and what you are allowed to
+see, stays exactly Komga's, and each returns the same page of books or reading lists as
+Komga's endpoints do:
+
+- `GET /api/v1/fork/books/keep-reading`: books in progress, most recently read first, without
+  those you are reading through a reading list.
+- `GET /api/v1/fork/books/on-deck`: Komga's On deck, without series whose most recently
+  finished book was read through a reading list, and without the series below.
+- `GET /api/v1/fork/books/new-on-deck`: series you had finished before new books arrived, where
+  every book you have not finished was added after you last finished one there.
+- `GET /api/v1/fork/readlists/in-progress`: reading lists you have read at least one book
+  through and not finished, most recently read first. A book in two lists, read through one,
+  starts only that one.
+
+They are offered as `dashboard-rows` in the capabilities. The web UIs do not use them yet.
 
 ## Database
 
