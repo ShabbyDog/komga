@@ -6,6 +6,32 @@ Each entry records the fork build it first shipped in. A fork build is named
 upstream release can be told apart. Builds made before the numbering was introduced
 are named `<upstream version>-ShabbyFork`, with no number.
 
+## Reading lists
+
+### Record which reading list a read was made in
+
+*Added in 1.29.2-ShabbyFork-build3.*
+
+Komga records how far you have read a book, but not where you were reading it from, so a book
+read as part of a reading list looks exactly like one read in its series. Clients that want to
+treat the two differently, keeping list reading out of a series' Keep reading and On deck, had
+to track that themselves, on each device separately.
+
+The server now keeps it. A client marks progress through
+`PATCH /api/v1/fork/books/{bookId}/read-progress`, which takes the same body as Komga's own
+endpoint plus an optional `readListId`: the read is recorded as made in that reading list, or,
+without one, as an ordinary series read. The reading list must contain the book.
+
+The context belongs to that exact progress. If the progress changes any other way, through
+stock Komga, Kobo or KOReader sync, or another app, the read counts as a series read again, so
+a client that does not know about contexts can never leave a wrong one behind.
+
+`GET /api/v1/fork/capabilities` lists what a ShabbyFork server offers, starting with
+`read-context`, so clients can tell a fork from stock Komga and enable each feature only where
+it exists. Stock Komga's endpoints are unchanged.
+
+Nothing uses this yet; the dashboard rows built on it come next.
+
 ## Database
 
 ### Keep the database usable by stock Komga
