@@ -232,6 +232,40 @@ not the release's, so a backfill sorts above every later release; fix that by re
 later release on its same commit (`git tag -f -a`, force-push the tag) and recreating its
 release with the identical jar and notes.
 
+### The database must stay usable by stock Komga
+
+**At any time, stock `gotson/komga` of the same version must be able to start on our config
+dir and behave normally.** That is what makes the fork a reversible add-on: falling back to
+stock is just swapping the jar.
+
+So the fork **never adds, edits or removes an upstream migration**, and never changes the
+schema or meaning of `database.sqlite` or `tasks.sqlite`. This is not about the columns: an
+extra column with a default is harmless to stock. It is Flyway's history. Stock refuses to start
+on an applied migration it does not ship ("Detected applied migration not resolved locally"),
+and the fork, in turn, refuses a database stock has run on. Both were verified with the released
+1.29.2 jars.
+
+Fork data lives in **`shabbyfork.sqlite`** instead, next to the other databases
+(`komga.shabbyfork-db.file`):
+
+- Its migrations are in `komga/src/flyway/resources/shabbyfork/migration/sqlite`, with their own
+  history inside that file, run by `ShabbyforkDatabaseConfiguration` before Komga's own Flyway.
+- The main connection pools `ATTACH` it as schema `shabbyfork` (`DataSourcesConfiguration`), so
+  fork tables can be joined to Komga's in one query. Its jOOQ classes are generated already
+  qualified (`org.gotson.komga.jooq.shabbyfork`), and the fork reads and writes them through
+  the ordinary `dslRW`/`dslRO`. Stock never attaches it, so stock never sees it.
+- Fork tables hold no foreign keys into Komga's tables (none can cross files), and stock can
+  delete what they point at while it is in charge. A missing row means the default; a row whose
+  target is gone is ignored or cleaned up.
+- `ShabbyforkLegacySchemaRepair` undoes what fork builds before this did to `database.sqlite`
+  (the scan-on-change column and its history entry). Add an entry there, not a new migration, if
+  another such case is ever found.
+
+`auto-release.sh` enforces the rule: it refuses to build when `git diff <release tag> HEAD`
+touches upstream's migration folders, and it backs up and restores `shabbyfork.sqlite` with the
+other databases. To check a change for real, copy a fork config dir and start the stock jar of
+that version on it.
+
 ### Upstream's GitHub Actions are disabled
 
 The fork inherits upstream's workflows, and several of them talk to upstream's own
@@ -318,7 +352,7 @@ Hexagonal/DDD layering under `org.gotson.komga`, enforced by ArchUnit tests in `
 
 ### Database & jOOQ (important build wiring)
 
-Two SQLite databases: `main` (`database.sqlite`) and `tasks` (`tasks.sqlite`), each with its own Flyway migrations and its own generated jOOQ package (`org.gotson.komga.jooq.main` / `.tasks`).
+Two SQLite databases: `main` (`database.sqlite`) and `tasks` (`tasks.sqlite`), each with its own Flyway migrations and its own generated jOOQ package (`org.gotson.komga.jooq.main` / `.tasks`). The fork adds a third, `shabbyfork.sqlite` (`.shabbyfork`, `generateShabbyforkJooq`), for all fork data — see "The database must stay usable by stock Komga" above.
 
 Migrations live in `komga/src/flyway/` — SQL in `resources/db/migration/sqlite` (+ `resources/tasks/migration/sqlite`), and Kotlin migrations in `kotlin/db/migration/sqlite`. Filenames are `V<yyyyMMddHHmmss>__description`.
 

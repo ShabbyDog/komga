@@ -6,6 +6,8 @@ import org.jetbrains.kotlin.util.prefixIfNot
 import org.jooq.meta.kotlin.database
 import org.jooq.meta.kotlin.generator
 import org.jooq.meta.kotlin.jdbc
+import org.jooq.meta.kotlin.schema
+import org.jooq.meta.kotlin.schemata
 import org.jooq.meta.kotlin.target
 import org.springframework.boot.gradle.plugin.SpringBootPlugin
 
@@ -43,6 +45,7 @@ sourceSets {
     java {
       output.dir(flyway.output)
       srcDir("build/generated-src/jooq/tasks")
+      srcDir("build/generated-src/jooq/shabbyfork")
     }
   }
 }
@@ -308,6 +311,7 @@ val sqliteUrls =
   mapOf(
     "main" to "jdbc:sqlite:${project.layout.buildDirectory.get()}/generated/flyway/main/database.sqlite",
     "tasks" to "jdbc:sqlite:${project.layout.buildDirectory.get()}/generated/flyway/tasks/tasks.sqlite",
+    "shabbyfork" to "jdbc:sqlite:${project.layout.buildDirectory.get()}/generated/flyway/shabbyfork/shabbyfork.sqlite",
   )
 val sqliteMigrationDirs =
   mapOf(
@@ -319,6 +323,10 @@ val sqliteMigrationDirs =
     "tasks" to
       listOf(
         "$projectDir/src/flyway/resources/tasks/migration/sqlite",
+      ),
+    "shabbyfork" to
+      listOf(
+        "$projectDir/src/flyway/resources/shabbyfork/migration/sqlite",
       ),
   )
 
@@ -357,6 +365,20 @@ tasks.register("flywayMigrateTasks", FlywayMigrateTask::class) {
     mkdir("${project.layout.buildDirectory.get()}/generated/flyway/$id")
   }
   mixed = true
+}
+
+// ShabbyFork: the fork's own database, kept apart so stock Komga can always run on database.sqlite
+tasks.register("flywayMigrateShabbyfork", FlywayMigrateTask::class) {
+  val id = "shabbyfork"
+  url = sqliteUrls[id]
+  locations = arrayOf("classpath:shabbyfork/migration/sqlite")
+  dependsOn("flywayClasses")
+  sqliteMigrationDirs[id]?.forEach { inputs.dir(it) }
+  outputs.dir("${project.layout.buildDirectory.get()}/generated/flyway/$id")
+  doFirst {
+    delete(outputs.files)
+    mkdir("${project.layout.buildDirectory.get()}/generated/flyway/$id")
+  }
 }
 
 buildscript {
@@ -404,6 +426,30 @@ jooq {
         }
       }
     }
+    // ShabbyFork: generated qualified with the schema name the main connections attach it under
+    create("shabbyfork") {
+      jooqConfiguration {
+        logging = org.jooq.meta.jaxb.Logging.WARN
+        jdbc {
+          driver = "org.sqlite.JDBC"
+          url = sqliteUrls["shabbyfork"]
+        }
+        generator {
+          database {
+            name = "org.jooq.meta.sqlite.SQLiteDatabase"
+            schemata {
+              schema {
+                inputSchema = ""
+                outputSchema = "shabbyfork"
+              }
+            }
+          }
+          target {
+            packageName = "org.gotson.komga.jooq.shabbyfork"
+          }
+        }
+      }
+    }
   }
 }
 tasks.named<JooqGenerate>("generateJooq") {
@@ -423,20 +469,30 @@ tasks.withType<JooqGenerate>().configureEach {
     }
 }
 
+tasks.named<JooqGenerate>("generateShabbyforkJooq") {
+  sqliteMigrationDirs["shabbyfork"]?.forEach { inputs.dir(it) }
+  allInputsDeclared = true
+  dependsOn("flywayMigrateShabbyfork")
+}
+
 tasks.whenTaskAdded {
   if (name == "kaptGenerateStubsKotlin") {
     dependsOn("generateTasksJooq")
+    dependsOn("generateShabbyforkJooq")
   }
 }
 
 tasks.runKtlintFormatOverMainSourceSet {
   dependsOn("generateTasksJooq")
+  dependsOn("generateShabbyforkJooq")
 }
 tasks.runKtlintCheckOverMainSourceSet {
   dependsOn("generateTasksJooq")
+  dependsOn("generateShabbyforkJooq")
 }
 tasks.compileKotlin {
   dependsOn("generateTasksJooq")
+  dependsOn("generateShabbyforkJooq")
 }
 
 openApi {

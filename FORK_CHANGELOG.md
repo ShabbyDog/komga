@@ -6,6 +6,30 @@ Each entry records the fork build it first shipped in. A fork build is named
 upstream release can be told apart. Builds made before the numbering was introduced
 are named `<upstream version>-ShabbyFork`, with no number.
 
+## Database
+
+### Keep the database usable by stock Komga
+
+*Added in 1.29.2-ShabbyFork-build2.*
+
+Switching a server back to stock Komga is meant to be as simple as swapping the jar, but it
+was not: stock Komga refused to start on a database this fork had used. The option to scan a
+library when its files change had been added as an ordinary Komga database migration, and
+Komga will not start on a database whose migration history lists one it does not know.
+
+The fork now keeps everything of its own in a separate file, `shabbyfork.sqlite`, next to
+`database.sqlite` in the config directory. Stock Komga never opens it, so `database.sqlite`
+stays exactly what stock expects, and a server can go back to stock and return to the fork
+without either one complaining.
+
+The first start of this build moves the scan-on-change option of every library into the new
+file and removes the old column and its history entry from `database.sqlite`. Nothing needs
+doing by hand, but back up the config directory first: an older fork build will not start on the
+moved database, so going back to one means restoring that backup (the automated deploy's
+rollback does this). Stock Komga and this build onwards start on it either way.
+
+Back up `shabbyfork.sqlite` together with the other databases from now on.
+
 ## Scanning
 
 ### Scan a library when its files change

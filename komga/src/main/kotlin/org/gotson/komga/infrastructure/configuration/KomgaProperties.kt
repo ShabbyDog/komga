@@ -22,6 +22,7 @@ class KomgaProperties {
     try {
       Path(database.file).parent.createDirectories()
       Path(tasksDb.file).parent.createDirectories()
+      Path(shabbyforkDb.file).parent.createDirectories()
     } catch (_: Exception) {
     }
   }
@@ -43,6 +44,9 @@ class KomgaProperties {
   var tasksDb = Database()
 
   var sessionsDb = Database()
+
+  // ShabbyFork: the fork's own data lives in a database of its own, so stock Komga can always run on database.sqlite
+  var shabbyforkDb = Database()
 
   var cors = Cors()
 
