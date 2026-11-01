@@ -87,6 +87,6 @@ class ShabbyforkController(
 
   companion object {
     /** Capability names. Only ever add to this list; a client that sees a name relies on it. */
-    val CAPABILITIES = listOf("read-context")
+    val CAPABILITIES = listOf("read-context", "dashboard-rows")
   }
 }
