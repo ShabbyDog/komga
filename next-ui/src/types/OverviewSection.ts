@@ -9,12 +9,35 @@ export const OverviewSectionValues = [
   'recently_added_series',
   'recently_updated_series',
   'recently_read_books',
+  // ShabbyFork: only shown when the server offers the fork's dashboard rows
+  'new_on_deck',
+  'readlists_in_progress',
 ] as const
 
-export const OverviewSectionsDefault: ClientSettingUserOverviewSection[] =
-  OverviewSectionValues.map((section) => ({
+// ShabbyFork: sections that exist only on a fork server
+export const OverviewSectionsFork: readonly OverviewSection[] = [
+  'new_on_deck',
+  'readlists_in_progress',
+]
+
+// the order a new layout starts with: the fork's sections follow the rows they belong with
+const defaultOrder: readonly OverviewSection[] = [
+  'keep_reading',
+  'on_deck',
+  'new_on_deck',
+  'readlists_in_progress',
+  'recently_released_books',
+  'recently_added_books',
+  'recently_added_series',
+  'recently_updated_series',
+  'recently_read_books',
+]
+
+export const OverviewSectionsDefault: ClientSettingUserOverviewSection[] = defaultOrder.map(
+  (section) => ({
     section: section,
-  }))
+  }),
+)
 
 export type OverviewSection = (typeof OverviewSectionValues)[number]
 
@@ -53,5 +76,16 @@ export const overviewSectionMessages: Record<OverviewSection, MessageDescriptor>
     description: 'Overview section: recently read books',
     defaultMessage: 'Recently Read Books',
     id: 'enum.OverviewSection.recently_read_books',
+  },
+  new_on_deck: {
+    description:
+      'Overview section: new books on deck, in series that were caught up before they arrived',
+    defaultMessage: 'New Books On Deck',
+    id: 'enum.OverviewSection.new_on_deck',
+  },
+  readlists_in_progress: {
+    description: 'Overview section: reading lists in progress',
+    defaultMessage: 'Reading Lists In Progress',
+    id: 'enum.OverviewSection.readlists_in_progress',
   },
 })

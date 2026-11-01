@@ -287,7 +287,9 @@
   },
   "dashboard": {
     "keep_reading": "Keep Reading",
+    "new_on_deck": "New Books On Deck",
     "on_deck": "On Deck",
+    "readlists_in_progress": "Reading Lists In Progress",
     "recently_added_books": "Recently Added Books",
     "recently_added_series": "Recently Added Series",
     "recently_read_books": "Recently Read Books",

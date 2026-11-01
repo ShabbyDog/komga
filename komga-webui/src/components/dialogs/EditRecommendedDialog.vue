@@ -54,6 +54,7 @@ import Vue, {PropType} from 'vue'
 import {
   ClientSettingsRecommendedView,
   ClientSettingsRecommendedViewSection,
+  FORK_SECTIONS,
   RECOMMENDED_DEFAULT,
 } from '@/types/komga-clientsettings'
 
@@ -74,6 +75,11 @@ export default Vue.extend({
     viewConfig: {
       type: Object as PropType<ClientSettingsRecommendedView>,
       required: true,
+    },
+    // ShabbyFork: whether the server offers the fork's dashboard rows
+    forkDashboard: {
+      type: Boolean,
+      default: false,
     },
   },
   watch: {
@@ -96,11 +102,16 @@ export default Vue.extend({
     },
   },
   methods: {
+    // ShabbyFork: sections a stock server cannot show are left out of the list
+    isAvailable(it: ClientSettingsRecommendedViewSection): boolean {
+      return this.forkDashboard || !FORK_SECTIONS.includes(it.section)
+    },
     reset(viewConfig: ClientSettingsRecommendedView) {
-      this.localItems = viewConfig?.sections || []
+      this.localItems = (viewConfig?.sections || []).filter(this.isAvailable)
       this.enabled = []
       this.localItems.forEach(it => this.enabled[it.section] = true)
       RECOMMENDED_DEFAULT.sections
+        .filter(this.isAvailable)
         .filter(it => !viewConfig?.sections.some(s => s.section === it.section))
         .forEach(it => this.localItems.push(it))
     },
@@ -113,6 +124,8 @@ export default Vue.extend({
     },
     saveChanges() {
       const sections = this.localItems.filter(it => this.enabled[it.section])
+      // ShabbyFork: keep the fork sections a layout already had, though a stock server hid them
+      sections.push(...(this.viewConfig?.sections || []).filter(it => !this.isAvailable(it)))
       const updated = {
         sections: sections,
       } as ClientSettingsRecommendedView
