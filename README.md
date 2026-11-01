@@ -1,3 +1,10 @@
+> **This is ShabbyFork, a maintained fork of [gotson/komga](https://github.com/gotson/komga).**
+> Each build is an upstream Komga release with the fork's changes on top, and never includes
+> unreleased upstream code. What the fork adds, and the build each change first shipped in, is in
+> [FORK_CHANGELOG.md](./FORK_CHANGELOG.md); builds are on this repository's
+> [releases page](https://github.com/ShabbyDog/komga/releases). The rest of this README is
+> upstream's, unchanged.
+
 [![Open Collective backers and sponsors](https://img.shields.io/opencollective/all/komga?label=OpenCollective%20Sponsors&color=success)](https://opencollective.com/komga) [![GitHub Sponsors](https://img.shields.io/github/sponsors/gotson?label=Github%20Sponsors&color=success)](https://github.com/sponsors/gotson)
 [![Discord](https://img.shields.io/discord/678794935368941569?label=Discord&color=blue)](https://discord.gg/TdRpkDu)
 
