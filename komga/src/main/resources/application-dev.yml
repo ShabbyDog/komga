@@ -3,6 +3,8 @@ komga:
     file: "file:database?mode=memory"
   tasks-db:
     file: "file:tasks?mode=memory"
+  shabbyfork-db:
+    file: "file:shabbyfork?mode=memory&cache=shared"
   sessions-db:
     file: "file:sessions?mode=memory"
   cors.allowed-origins:
