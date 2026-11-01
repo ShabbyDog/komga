@@ -20,7 +20,7 @@ class DataSourcesConfiguration(
   @Bean("sqliteDataSourceRW")
   @Primary
   fun sqliteDataSourceRW(): DataSource =
-    buildDataSource("SqliteMainPoolRW", SqliteUdfDataSource::class.java, komgaProperties.database)
+    buildDataSource("SqliteMainPoolRW", SqliteUdfDataSource::class.java, komgaProperties.database, ShabbyforkSchema.attachSql(komgaProperties.shabbyforkDb))
       .apply {
         // force pool size to 1 if the pool is only used for writes
         if (komgaProperties.database.shouldSeparateReadFromWrites()) this.maximumPoolSize = 1
@@ -29,7 +29,7 @@ class DataSourcesConfiguration(
   @Bean("sqliteDataSourceRO")
   fun sqliteDataSourceRO(): DataSource =
     if (komgaProperties.database.shouldSeparateReadFromWrites())
-      buildDataSource("SqliteMainPoolRO", SqliteUdfDataSource::class.java, komgaProperties.database)
+      buildDataSource("SqliteMainPoolRO", SqliteUdfDataSource::class.java, komgaProperties.database, ShabbyforkSchema.attachSql(komgaProperties.shabbyforkDb))
     else
       sqliteDataSourceRW()
 
@@ -63,6 +63,8 @@ class DataSourcesConfiguration(
     poolName: String,
     dataSourceClass: Class<out SQLiteDataSource>,
     databaseProps: KomgaProperties.Database,
+    // ShabbyFork: lets the main pools attach shabbyfork.sqlite on every connection
+    connectionInitSql: String? = null,
   ): HikariDataSource {
     val extraPragmas =
       databaseProps.pragmas.let {
@@ -103,6 +105,7 @@ class DataSourcesConfiguration(
         this.dataSource = dataSource
         this.poolName = poolName
         this.maximumPoolSize = poolSize
+        this.connectionInitSql = connectionInitSql
       },
     )
   }

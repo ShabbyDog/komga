@@ -7,6 +7,9 @@ komga:
   tasks-db:
     file: "\${java.io.tmpdir}/tasks\${random.uuid}.sqlite"
     journal-mode: WAL
+  shabbyfork-db:
+    file: "\${java.io.tmpdir}/shabbyfork\${random.uuid}.sqlite"
+    journal-mode: WAL
   sessions-db:
     file: "\${java.io.tmpdir}/sessions\${random.uuid}.sqlite"
     journal-mode: WAL

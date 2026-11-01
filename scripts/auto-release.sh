@@ -499,8 +499,25 @@ $(jq -r '.summary' <<< "$v")"
   return 0
 }
 
+# Stock Komga of the same version must always be able to run on our database.sqlite and
+# tasks.sqlite, and Flyway refuses to start on a history entry it does not ship. So the fork
+# never adds, edits or removes an upstream migration; fork schema lives in shabbyfork.sqlite,
+# under komga/src/flyway/resources/shabbyfork. Checked against the release tag we build on.
+check_upstream_schema_untouched() {
+  local tag changed
+  tag=$(grep '^version' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+  changed=$(git diff --name-only "$tag" HEAD -- komga/src/flyway/resources/db komga/src/flyway/resources/tasks komga/src/flyway/kotlin) || return 1
+  [ -z "$changed" ] && return 0
+  log "ERROR: the fork changes upstream's database migrations, so stock Komga could not run on its database:"
+  printf '%s\n' "$changed" | sed 's/^/         /'
+  return 1
+}
+
 build_and_test() {
   local wlog rc
+  log "Checking the fork leaves upstream's database schema alone ..."
+  check_upstream_schema_untouched || return 1
+
   log "Building frontends ..."
   wlog=$(mktemp)
   ( cd komga-webui && npm ci --no-audit --no-fund && npm run build ) 2>&1 | tee "$wlog"
@@ -604,7 +621,7 @@ deploy() {
   # there is nothing but database.sqlite to copy. A sidecar still being here means the stop was
   # cut short by its systemd timeout, which is the one case where copying the database alone
   # would produce a backup that is not just stale but unreadable.
-  if [ -f "$KOMGA_CONFIG_DIR/database.sqlite-wal" ] || [ -f "$KOMGA_CONFIG_DIR/tasks.sqlite-wal" ]; then
+  if [ -f "$KOMGA_CONFIG_DIR/database.sqlite-wal" ] || [ -f "$KOMGA_CONFIG_DIR/tasks.sqlite-wal" ] || [ -f "$KOMGA_CONFIG_DIR/shabbyfork.sqlite-wal" ]; then
     log "NOTE: a -wal is still present after stopping $KOMGA_SERVICE, so the shutdown was not clean."
     log "      Backing the sidecars up with their databases. Consider raising TimeoutStopSec."
   fi
@@ -614,6 +631,9 @@ deploy() {
   cp -p "$KOMGA_JAR" "$backup/" || return 1
   backup_sqlite "$backup" database.sqlite || return 1
   backup_sqlite "$backup" tasks.sqlite || return 1
+  # The fork's own data, kept out of database.sqlite so stock Komga can run on it. Absent before
+  # the first jar that creates it, which backup_sqlite and restore_sqlite both allow for.
+  backup_sqlite "$backup" shabbyfork.sqlite || return 1
 
   # Keep the versioned jar alongside the live one, so the jar folder stays a history of what
   # has run and a manual rollback is just a copy. Installing the jar that is already in place is
@@ -657,6 +677,7 @@ rollback() {
   cp -p "$backup/$(basename "$KOMGA_JAR")" "$KOMGA_JAR" || log "rollback: could not restore jar"
   restore_sqlite "$backup" database.sqlite || log "rollback: could not restore database.sqlite"
   restore_sqlite "$backup" tasks.sqlite || log "rollback: could not restore tasks.sqlite"
+  restore_sqlite "$backup" shabbyfork.sqlite || log "rollback: could not restore shabbyfork.sqlite"
   systemctl_cmd start "$KOMGA_SERVICE" 2>/dev/null
   if wait_healthy; then log "Rolled back and healthy again."; else log "ROLLED BACK BUT STILL UNHEALTHY - needs a human."; fi
 }
