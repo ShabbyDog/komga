@@ -1,0 +1,119 @@
+{
+  "version": "1.0.0",
+  "about": "Shared scenario vectors for the 'New books on deck' split. Canonical semantics live in dashboard-rows-spec.md. Both repos (komga-reader app derivation + komga/ShabbyFork DAO) must assert these. Bump 'version' on ANY change; each suite asserts the version it was written against, so a one-sided edit fails the other repo's build.",
+  "decisionUnderTest": "newDrop",
+  "decisionDefinition": "latest = max(readDate for completed books); oldest = min(createdDate for NOT-completed books); newDrop = latest != null && oldest != null && oldest > latest  (strict, conservative on null). 'Not completed' = unread OR in-progress.",
+  "fields": {
+    "books[].completed": "true = finished (counts toward 'latest'); false/absent = not completed (counts toward 'oldest')",
+    "books[].readDate": "completion time; only meaningful when completed = true",
+    "books[].createdDate": "server add time",
+    "onDeckCandidate": "whether Komga would place this series on deck at all; the app/fork split only ever sees candidates",
+    "expectedNewDrop": "canonical answer (not-completed definition). Both implementations must return this for onDeckCandidate=true vectors",
+    "equivalenceSensitive": "true where the app's current UNREAD-only approximation would differ from the canonical not-completed answer (see spec §Row 1 known approximation)"
+  },
+  "vectors": [
+    {
+      "name": "caught_up_then_new_issue",
+      "description": "Read #1-3, then #4 dropped. #4 is new-on-deck.",
+      "books": [
+        { "id": "n1", "createdDate": "2026-10-01T00:00:00Z", "completed": true, "readDate": "2026-10-20T00:00:00Z" },
+        { "id": "n3", "createdDate": "2026-10-03T00:00:00Z", "completed": true, "readDate": "2026-11-01T00:00:00Z" },
+        { "id": "n4", "createdDate": "2026-11-02T00:00:00Z", "completed": false, "readDate": null }
+      ],
+      "onDeckCandidate": true,
+      "expectedNewDrop": true,
+      "equivalenceSensitive": false
+    },
+    {
+      "name": "drop_waiting_with_newer_issue",
+      "description": "#4 still unread when #5 arrives. Oldest pending (#4) still postdates last read, so #4 stays in new-on-deck.",
+      "books": [
+        { "id": "n3", "createdDate": "2026-10-03T00:00:00Z", "completed": true, "readDate": "2026-11-01T00:00:00Z" },
+        { "id": "n4", "createdDate": "2026-11-02T00:00:00Z", "completed": false, "readDate": null },
+        { "id": "n5", "createdDate": "2026-11-03T00:00:00Z", "completed": false, "readDate": null }
+      ],
+      "onDeckCandidate": true,
+      "expectedNewDrop": true,
+      "equivalenceSensitive": false
+    },
+    {
+      "name": "read_into_drop_next_is_backlog",
+      "description": "Read #4 AFTER #5 had already arrived. #5 predates that read, so it is ordinary backlog -> regular On Deck.",
+      "books": [
+        { "id": "n3", "createdDate": "2026-10-03T00:00:00Z", "completed": true, "readDate": "2026-11-01T00:00:00Z" },
+        { "id": "n4", "createdDate": "2026-11-02T00:00:00Z", "completed": true, "readDate": "2026-11-04T00:00:00Z" },
+        { "id": "n5", "createdDate": "2026-11-03T00:00:00Z", "completed": false, "readDate": null }
+      ],
+      "onDeckCandidate": true,
+      "expectedNewDrop": false,
+      "equivalenceSensitive": false
+    },
+    {
+      "name": "caught_up_again_next_new",
+      "description": "Read #1-5, then #6 dropped. #6 is new-on-deck again.",
+      "books": [
+        { "id": "n5", "createdDate": "2026-11-03T00:00:00Z", "completed": true, "readDate": "2026-11-05T00:00:00Z" },
+        { "id": "n6", "createdDate": "2026-11-06T00:00:00Z", "completed": false, "readDate": null }
+      ],
+      "onDeckCandidate": true,
+      "expectedNewDrop": true,
+      "equivalenceSensitive": false
+    },
+    {
+      "name": "mid_series_backlog",
+      "description": "An unread issue that was added BEFORE your last read (you left it behind) -> ordinary mid-series On Deck, never new-on-deck.",
+      "books": [
+        { "id": "m1", "createdDate": "2026-10-01T00:00:00Z", "completed": true, "readDate": "2026-11-01T00:00:00Z" },
+        { "id": "m2", "createdDate": "2026-10-02T00:00:00Z", "completed": false, "readDate": null }
+      ],
+      "onDeckCandidate": true,
+      "expectedNewDrop": false,
+      "equivalenceSensitive": false
+    },
+    {
+      "name": "strict_tie_not_after",
+      "description": "Oldest pending createdDate equals latest completion readDate exactly. Comparison is strict, so NOT a new drop.",
+      "books": [
+        { "id": "t1", "createdDate": "2026-10-01T00:00:00Z", "completed": true, "readDate": "2026-11-02T00:00:00Z" },
+        { "id": "t2", "createdDate": "2026-11-02T00:00:00Z", "completed": false, "readDate": null }
+      ],
+      "onDeckCandidate": true,
+      "expectedNewDrop": false,
+      "equivalenceSensitive": false
+    },
+    {
+      "name": "in_progress_book_off_candidate_path",
+      "description": "Series has an in-progress book (added before the last completion) plus a newer unread. Canonical (not-completed) => false. App's UNREAD-only approx => true. Harmless because a series with an in-progress book is NOT an On Deck candidate (it is Keep reading), so this never reaches the split. Documents the approximation; hardening the app to use not-completed removes the gap.",
+      "books": [
+        { "id": "p1", "createdDate": "2026-10-01T00:00:00Z", "completed": true, "readDate": "2026-11-01T00:00:00Z" },
+        { "id": "p2", "createdDate": "2026-10-15T00:00:00Z", "completed": false, "readDate": "2026-10-20T00:00:00Z" },
+        { "id": "p3", "createdDate": "2026-11-02T00:00:00Z", "completed": false, "readDate": null }
+      ],
+      "onDeckCandidate": false,
+      "expectedNewDrop": false,
+      "equivalenceSensitive": true
+    },
+    {
+      "name": "no_completion_unknown_latest",
+      "description": "Nothing completed yet (no 'latest'). Conservative: not a new drop.",
+      "books": [
+        { "id": "u1", "createdDate": "2026-11-01T00:00:00Z", "completed": false, "readDate": null },
+        { "id": "u2", "createdDate": "2026-11-02T00:00:00Z", "completed": false, "readDate": null }
+      ],
+      "onDeckCandidate": false,
+      "expectedNewDrop": false,
+      "equivalenceSensitive": false
+    },
+    {
+      "name": "fully_caught_up_no_pending",
+      "description": "Everything completed (no 'oldest'). Series is on no deck row; newDrop is false.",
+      "books": [
+        { "id": "c1", "createdDate": "2026-10-01T00:00:00Z", "completed": true, "readDate": "2026-11-01T00:00:00Z" },
+        { "id": "c2", "createdDate": "2026-10-02T00:00:00Z", "completed": true, "readDate": "2026-11-02T00:00:00Z" }
+      ],
+      "onDeckCandidate": false,
+      "expectedNewDrop": false,
+      "equivalenceSensitive": false
+    }
+  ]
+}
