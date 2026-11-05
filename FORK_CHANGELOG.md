@@ -8,6 +8,13 @@ are named `<upstream version>-ShabbyFork`, with no number.
 
 ## Reading lists
 
+The client-facing capabilities below — `read-context`, `read-context-import` and
+`dashboard-rows`, served under `/api/v1/fork/*` — were designed for **Longbox**, this fork's
+companion comic reader for Android: <https://play.google.com/store/apps/details?id=com.studio6to1.longbox>.
+Longbox detects a ShabbyFork server through `GET /api/v1/fork/capabilities` and uses each feature
+where it is offered, falling back to stock Komga's own endpoints otherwise. The endpoints are open
+to any client, and both web UIs also use `dashboard-rows`.
+
 ### Record which reading list a read was made in
 
 *Added in 1.29.2-ShabbyFork-build3.*
