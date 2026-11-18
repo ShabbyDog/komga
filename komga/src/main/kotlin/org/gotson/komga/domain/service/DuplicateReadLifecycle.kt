@@ -1,11 +1,11 @@
 package org.gotson.komga.domain.service
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import org.gotson.komga.domain.model.Media
+import org.gotson.komga.domain.model.ComicVineLink
+import org.gotson.komga.domain.model.KomgaUser
 import org.gotson.komga.domain.model.SearchContext
 import org.gotson.komga.domain.persistence.DuplicateReadRepository
 import org.gotson.komga.domain.persistence.KomgaUserRepository
-import org.gotson.komga.domain.persistence.MediaRepository
 import org.gotson.komga.domain.persistence.ReadContextRepository
 import org.gotson.komga.domain.persistence.ReadListRepository
 import org.gotson.komga.domain.persistence.ReadProgressRepository
@@ -29,7 +29,6 @@ private val logger = KotlinLogging.logger {}
 class DuplicateReadLifecycle(
   private val duplicateReadRepository: DuplicateReadRepository,
   private val bookLifecycle: BookLifecycle,
-  private val mediaRepository: MediaRepository,
   private val readProgressRepository: ReadProgressRepository,
   private val readContextRepository: ReadContextRepository,
   private val readListRepository: ReadListRepository,
@@ -57,37 +56,52 @@ class DuplicateReadLifecycle(
     val users by lazy { userRepository.findAll() }
 
     var copied = 0
+    val checked = mutableListOf<String>()
     unchecked.forEach { (bookId, links) ->
-      if (mediaRepository.findByIdOrNull(bookId)?.status != Media.Status.READY) return@forEach
-
-      val copies =
-        links
-          .flatMap { booksByIssue[it.seriesId to it.issueId!!].orEmpty() }
-          .filter { it != bookId }
-          .toSet()
-      if (copies.isNotEmpty()) {
-        val completedByUser =
-          copies
-            .flatMap { readProgressRepository.findAllByBookId(it) }
-            .filter { it.completed }
-            .groupBy { it.userId }
-            .mapValues { (_, progresses) -> progresses.maxBy { it.lastModifiedDate } }
-
-        users
-          .filter { it.id in completedByUser.keys }
-          .filter { readProgressRepository.findByBookIdAndUserIdOrNull(bookId, it.id) == null }
-          .forEach { user ->
-            val source = completedByUser.getValue(user.id)
-            bookLifecycle.markReadProgressCompleted(bookId, user)
-            readContextRepository.findCurrentOrNull(user.id, source.bookId)?.let { context ->
-              if (readListRepository.findAllContainingBookId(bookId, SearchContext.empty()).any { it.id == context.readListId })
-                readContextRepository.markCurrentProgress(user.id, bookId, context.readListId)
-            }
-            copied++
-            logger.info { "Book $bookId is another copy of book ${source.bookId} (same Comic Vine issue), marked read for user ${user.email}" }
-          }
+      try {
+        copied += copyReads(bookId, links, booksByIssue) { users }
+        checked += bookId
+      } catch (e: Exception) {
+        logger.error(e) { "Duplicate read check failed for book $bookId, it will be checked again" }
       }
-      duplicateReadRepository.markChecked(bookId)
+    }
+    duplicateReadRepository.markChecked(checked)
+    return copied
+  }
+
+  private fun copyReads(
+    bookId: String,
+    links: List<ComicVineLink>,
+    booksByIssue: Map<Pair<String, String>, List<String>>,
+    users: () -> Collection<KomgaUser>,
+  ): Int {
+    var copied = 0
+    val copies =
+      links
+        .flatMap { booksByIssue[it.seriesId to it.issueId!!].orEmpty() }
+        .filter { it != bookId }
+        .toSet()
+    if (copies.isNotEmpty()) {
+      val completedByUser =
+        copies
+          .flatMap { readProgressRepository.findAllByBookId(it) }
+          .filter { it.completed }
+          .groupBy { it.userId }
+          .mapValues { (_, progresses) -> progresses.maxBy { it.lastModifiedDate } }
+
+      users()
+        .filter { it.id in completedByUser.keys }
+        .filter { readProgressRepository.findByBookIdAndUserIdOrNull(bookId, it.id) == null }
+        .forEach { user ->
+          val source = completedByUser.getValue(user.id)
+          bookLifecycle.markReadProgressCompleted(bookId, user)
+          readContextRepository.findCurrentOrNull(user.id, source.bookId)?.let { context ->
+            if (readListRepository.findAllContainingBookId(bookId, SearchContext.empty()).any { it.id == context.readListId })
+              readContextRepository.markCurrentProgress(user.id, bookId, context.readListId)
+          }
+          copied++
+          logger.info { "Book $bookId is another copy of book ${source.bookId} (same Comic Vine issue), marked read for user ${user.email}" }
+        }
     }
     return copied
   }
