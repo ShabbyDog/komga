@@ -6,6 +6,33 @@ Each entry records the fork build it first shipped in. A fork build is named
 upstream release can be told apart. Builds made before the numbering was introduced
 are named `<upstream version>-ShabbyFork`, with no number.
 
+## Duplicate books
+
+### A new copy of an issue you have read starts out read
+
+*Added in 1.30.1-ShabbyFork-build2.*
+
+When a second release of an issue you already have lands in the library, a different scan or a
+retagged file under a slightly different name, Komga sees an unrelated book. It starts unread,
+so a series you finished turns up on deck again. Komga only carries a read over when the same
+file reappears after being moved, and only when its bytes are identical.
+
+The fork now matches copies by the issue itself: when a book gets a Comic Vine issue link
+(`<Web>` in ComicInfo.xml) and another book in the same series links to the same issue, every
+user who has completed that other book, and has no progress of their own on the new one, gets
+the new one marked read. A read made in a reading list that holds both keeps its context.
+Replacing a file with a different release (the old one in the trash) counts too.
+
+- Each book is checked **once**, the first time it has a Comic Vine issue link and is analyzed,
+  so marking a copy unread afterwards sticks. Books without such a link are never matched.
+- It only ever marks books read, never unread, and never touches a book a user has started.
+- Books already in the library are checked once at startup, which is how existing duplicates
+  are fixed. The log says how many reads were copied.
+- Both files stay where they are; removing the extra copy is still up to you (Media → Duplicate
+  files does not list these, as their content differs).
+- The record of checked books lives in `shabbyfork.sqlite`; the reads themselves are ordinary
+  Komga read progress.
+
 ## Reading lists
 
 The client-facing capabilities below — `read-context`, `read-context-import` and
