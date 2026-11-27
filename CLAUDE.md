@@ -285,6 +285,14 @@ touches upstream's migration folders, and it backs up and restores `shabbyfork.s
 other databases. To check a change for real, copy a fork config dir and start the stock jar of
 that version on it.
 
+**Fork features must also have a stock fallback in the app.** Longbox (`../komga-reader`) is the
+companion app, and its standing rule is fork-first with stock parity: every fork-served feature
+is reproduced client-side so it works against stock Komga too (the app detects the fork via
+`/api/v1/fork/capabilities`, which stock 404s). So a new `/api/v1/fork/*` endpoint must be
+**additive and degrade gracefully** — stock simply doesn't serve it and the app derives the
+result from the public API. A change to shared feature semantics is a two-repo change, specced
+and vector-tested on both sides (see `../komga-reader/CLAUDE.md` "Fork-first / stock-parity").
+
 ### Upstream's GitHub Actions are disabled
 
 The fork inherits upstream's workflows, and several of them talk to upstream's own

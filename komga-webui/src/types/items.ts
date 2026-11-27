@@ -19,6 +19,8 @@ export enum ItemContext {
   FILE_SIZE = 'FILE_SIZE',
   SHOW_SERIES = 'SHOW_SERIES',
   READ_DATE = 'READ_DATE',
+  // ShabbyFork: the card sits in a dashboard activity row that can be hidden (series / reading list).
+  DASHBOARD_HIDE = 'DASHBOARD_HIDE',
 }
 
 export interface ItemTitle {

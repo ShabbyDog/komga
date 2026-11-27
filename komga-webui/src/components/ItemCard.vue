@@ -81,6 +81,7 @@
                 <book-actions-menu v-if="computedItem.type() === ItemTypes.BOOK && !item.oneshot"
                                    :book="item"
                                    :menu.sync="actionMenuState"
+                                   :dashboard-hide="itemContext.includes(ItemContext.DASHBOARD_HIDE)"
                 />
                 <one-shot-actions-menu v-if="computedItem.type() === ItemTypes.SERIES && item.oneshot"
                                        :series="item"
@@ -97,6 +98,7 @@
                 <read-list-actions-menu v-if="computedItem.type() === ItemTypes.READLIST"
                                         :read-list="item"
                                         :menu.sync="actionMenuState"
+                                        :dashboard-hide="itemContext.includes(ItemContext.DASHBOARD_HIDE)"
                 />
               </div>
             </v-overlay>
@@ -242,6 +244,7 @@ export default Vue.extend({
   data: () => {
     return {
       ItemTypes,
+      ItemContext,
       actionMenuState: false,
       thumbnailError: false,
       thumbnailCacheBust: '',

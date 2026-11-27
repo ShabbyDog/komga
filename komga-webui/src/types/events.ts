@@ -40,6 +40,9 @@ export const THUMBNAILCOLLECTION_DELETED = 'thumbnailcollection-deleted'
 
 export const SESSION_EXPIRED = 'session-expired'
 
+// ShabbyFork: a dashboard activity item was hidden or restored; the dashboard reloads its rows.
+export const DASHBOARD_DISMISSAL_CHANGED = 'dashboard-dismissal-changed'
+
 export const ERROR = 'error'
 export const NOTIFICATION = 'notification'
 

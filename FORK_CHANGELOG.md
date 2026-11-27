@@ -6,6 +6,29 @@ Each entry records the fork build it first shipped in. A fork build is named
 upstream release can be told apart. Builds made before the numbering was introduced
 are named `<upstream version>-ShabbyFork`, with no number.
 
+## Dashboard
+
+### Hide a series or reading list from the Longbox activity rows
+
+*Added in 1.30.1-ShabbyFork-build3.*
+
+Longbox can now remove a series or a reading list from its activity rows — Keep reading, On Deck,
+New books on deck (series) and In-progress reading lists (lists) — for one user. The dismissal is
+stored server-side (`api/v1/fork/dashboard/dismiss`, with `restore` to undo), so it applies to
+every Longbox client the user signs in with, and the rows are filtered before paging so pages stay
+exact.
+
+A dismissal is stamped with the moment it was made and stays in force only until a book in the
+series or list is **read again after that moment** — then the item returns to its row on its own,
+with no further action. Because the check is against Komga's own read progress, a read made from
+any client (the web UI, another device, another app) clears it just the same. The capability is
+advertised as `dashboard-dismissal`; on stock Komga, Longbox keeps the same behaviour client-side.
+
+The fork's **web UI** has the same feature: a "Hide from dashboard" entry in the ⋮ menu of a card
+on Keep Reading / On Deck / New Books On Deck / Reading Lists In Progress, and a **Hidden items**
+dialog (the eye-off button) to see and restore what you've hidden. Dismissals are listed through
+`GET api/v1/fork/dashboard/dismissals`.
+
 ## Duplicate books
 
 ### A new copy of an issue you have read starts out read

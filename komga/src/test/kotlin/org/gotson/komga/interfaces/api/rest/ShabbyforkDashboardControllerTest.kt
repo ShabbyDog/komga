@@ -31,8 +31,10 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import org.gotson.komga.jooq.shabbyfork.Tables as ShabbyforkTables
@@ -82,7 +84,26 @@ class ShabbyforkDashboardControllerTest(
     readListRepository.deleteAll()
     seriesLifecycle.deleteMany(seriesRepository.findAll())
     dsl.deleteFrom(ShabbyforkTables.READ_CONTEXT).execute()
+    dsl.deleteFrom(ShabbyforkTables.DASHBOARD_DISMISSAL).execute()
   }
+
+  private fun dismiss(
+    kind: String,
+    targetId: String,
+  ) = mockMvc
+    .post("/api/v1/fork/dashboard/dismiss") {
+      contentType = MediaType.APPLICATION_JSON
+      content = """{"kind":"$kind","targetId":"$targetId"}"""
+    }.andExpect { status { isNoContent() } }
+
+  private fun restore(
+    kind: String,
+    targetId: String,
+  ) = mockMvc
+    .post("/api/v1/fork/dashboard/restore") {
+      contentType = MediaType.APPLICATION_JSON
+      content = """{"kind":"$kind","targetId":"$targetId"}"""
+    }.andExpect { status { isNoContent() } }
 
   /** A series of three books, numbered 1 to 3, named `<name>1` to `<name>3`. */
   private fun makeSeriesWithBooks(name: String): Pair<Series, List<Book>> {
@@ -243,6 +264,113 @@ class ShabbyforkDashboardControllerTest(
 
       mockMvc.get("/api/v1/fork/readlists/in-progress").andExpect {
         jsonPath("$.content[*].id") { value(contains(readThrough.id)) }
+      }
+    }
+  }
+
+  @Nested
+  inner class Dismissal {
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given a dismissed series when listing keep reading and on deck then it is hidden from both`() {
+      val (sa, a) = makeSeriesWithBooks("a")
+      val (sb, b) = makeSeriesWithBooks("b")
+      read(a[0], completed = false) // a -> keep reading
+      read(b[0]) // b -> on deck (b2)
+
+      dismiss("SERIES", sa.id)
+      dismiss("SERIES", sb.id)
+
+      mockMvc.get("/api/v1/fork/books/keep-reading").andExpect {
+        jsonPath("$.content") { value(empty<Any>()) }
+      }
+      mockMvc.get("/api/v1/fork/books/on-deck").andExpect {
+        jsonPath("$.content") { value(empty<Any>()) }
+      }
+    }
+
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given a dismissed caught-up series then it is hidden from new on deck too`() {
+      val (sc, c) = makeSeriesWithBooks("c")
+      read(c[0])
+      setAdded(c[1], LocalDateTime.now(ZoneOffset.UTC))
+      setAdded(c[2], LocalDateTime.now(ZoneOffset.UTC))
+
+      dismiss("SERIES", sc.id)
+
+      mockMvc.get("/api/v1/fork/books/new-on-deck").andExpect {
+        jsonPath("$.content") { value(empty<Any>()) }
+      }
+    }
+
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given a dismissed series read again afterwards then it shows again`() {
+      val (sa, a) = makeSeriesWithBooks("a")
+      read(a[0], completed = false)
+      dismiss("SERIES", sa.id)
+      mockMvc.get("/api/v1/fork/books/keep-reading").andExpect {
+        jsonPath("$.content") { value(empty<Any>()) }
+      }
+
+      // opened again well after the dismissal (margin covers any test-machine tz shift in save())
+      readProgressRepository.save(ReadProgress(a[0].id, user.id, 5, false, readDate = LocalDateTime.now().plusDays(2)))
+
+      mockMvc.get("/api/v1/fork/books/keep-reading").andExpect {
+        jsonPath("$.content[*].name") { value(contains("a1")) }
+      }
+    }
+
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given a dismissed series then restoring shows it again`() {
+      val (sa, a) = makeSeriesWithBooks("a")
+      read(a[0], completed = false)
+      dismiss("SERIES", sa.id)
+      restore("SERIES", sa.id)
+
+      mockMvc.get("/api/v1/fork/books/keep-reading").andExpect {
+        jsonPath("$.content[*].name") { value(contains("a1")) }
+      }
+    }
+
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `listing dismissals returns the active ones by kind, and not restored or resurrected ones`() {
+      val (sa, a) = makeSeriesWithBooks("a")
+      val (sb, b) = makeSeriesWithBooks("b")
+      val (_, c) = makeSeriesWithBooks("c")
+      val list = list(c[0], c[1])
+      read(a[0], completed = false)
+      read(b[0], completed = false)
+      dismiss("SERIES", sa.id)
+      dismiss("SERIES", sb.id)
+      dismiss("READLIST", list.id)
+      restore("SERIES", sb.id) // sb no longer hidden
+
+      mockMvc.get("/api/v1/fork/dashboard/dismissals").andExpect {
+        status { isOk() }
+        jsonPath("$[*].targetId") { value(contains(sa.id, list.id)) }
+        jsonPath("$.length()") { value(2) }
+      }
+    }
+
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given a dismissed in-progress list then it is hidden, and restoring shows it again`() {
+      val (_, a) = makeSeriesWithBooks("a")
+      val started = list(a[0], a[1], a[2])
+      read(a[0], throughList = started)
+
+      dismiss("READLIST", started.id)
+      mockMvc.get("/api/v1/fork/readlists/in-progress").andExpect {
+        jsonPath("$.content") { value(empty<Any>()) }
+      }
+
+      restore("READLIST", started.id)
+      mockMvc.get("/api/v1/fork/readlists/in-progress").andExpect {
+        jsonPath("$.content[*].id") { value(contains(started.id)) }
       }
     }
   }

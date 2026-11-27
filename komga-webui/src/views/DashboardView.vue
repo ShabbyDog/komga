@@ -96,6 +96,23 @@
 
       <v-fab-transition>
         <v-btn
+          v-if="forkDismissal"
+          fab
+          small
+          bottom
+          right
+          fixed
+          style="margin-bottom: 72px"
+          :class="individualLibrary && $vuetify.breakpoint.smAndDown ? 'mb-12' : undefined"
+          :title="$t('dashboard.hidden_items')"
+          @click="hiddenDialog = true"
+        >
+          <v-icon>mdi-eye-off</v-icon>
+        </v-btn>
+      </v-fab-transition>
+
+      <v-fab-transition>
+        <v-btn
           fab
           bottom
           right
@@ -113,6 +130,8 @@
         :view-config.sync="viewConfig"
         @reset-defaults="resetDefaultView"
       />
+
+      <dashboard-hidden-dialog v-model="hiddenDialog"/>
     </v-container>
   </div>
 </template>
@@ -131,6 +150,7 @@ import {
   BOOK_ADDED,
   BOOK_CHANGED,
   BOOK_DELETED,
+  DASHBOARD_DISMISSAL_CHANGED,
   READPROGRESS_CHANGED,
   READPROGRESS_DELETED,
   READPROGRESS_SERIES_CHANGED,
@@ -173,6 +193,7 @@ import {
 import {ForkCapability} from '@/services/shabbyfork.service'
 import {ReadListDto} from '@/types/komga-readlists'
 import EditRecommendedDialog from '@/components/dialogs/EditRecommendedDialog.vue'
+import DashboardHiddenDialog from '@/components/dialogs/DashboardHiddenDialog.vue'
 
 interface SectionConfig {
   loader: PageLoader<any> | undefined,
@@ -191,6 +212,7 @@ export default Vue.extend({
   name: 'DashboardView',
   components: {
     EditRecommendedDialog,
+    DashboardHiddenDialog,
     HorizontalScroller,
     EmptyState,
     ToolbarSticky,
@@ -211,6 +233,9 @@ export default Vue.extend({
       loaderKeepReadingBooks: undefined as PageLoader<BookDto> | undefined,
       // ShabbyFork: rows that only a fork server offers, and whether this one does
       forkDashboard: false,
+      // ShabbyFork: whether this server lets the user hide/restore dashboard items
+      forkDismissal: false,
+      hiddenDialog: false,
       loaderNewOnDeckBooks: undefined as PageLoader<BookDto> | undefined,
       loaderReadListsInProgress: undefined as PageLoader<ReadListDto> | undefined,
       loaderOnDeckBooks: undefined as PageLoader<BookDto> | undefined,
@@ -231,6 +256,7 @@ export default Vue.extend({
     this.$eventHub.$on(READPROGRESS_DELETED, this.readProgressChanged)
     this.$eventHub.$on(READPROGRESS_SERIES_CHANGED, this.readProgressSeriesChanged)
     this.$eventHub.$on(READPROGRESS_SERIES_DELETED, this.readProgressSeriesChanged)
+    this.$eventHub.$on(DASHBOARD_DISMISSAL_CHANGED, this.dismissalChanged)
   },
   beforeDestroy() {
     this.$eventHub.$off(SERIES_ADDED, this.seriesChanged)
@@ -243,6 +269,7 @@ export default Vue.extend({
     this.$eventHub.$off(READPROGRESS_DELETED, this.readProgressChanged)
     this.$eventHub.$off(READPROGRESS_SERIES_CHANGED, this.readProgressSeriesChanged)
     this.$eventHub.$off(READPROGRESS_SERIES_DELETED, this.readProgressSeriesChanged)
+    this.$eventHub.$off(DASHBOARD_DISMISSAL_CHANGED, this.dismissalChanged)
   },
   async mounted() {
     if (this.individualLibrary) this.$store.commit('setLibraryRoute', {
@@ -250,6 +277,7 @@ export default Vue.extend({
       route: LIBRARY_ROUTE.RECOMMENDED,
     })
     this.forkDashboard = await this.$shabbyfork.hasCapability(ForkCapability.DASHBOARD_ROWS)
+    this.forkDismissal = await this.$shabbyfork.hasCapability(ForkCapability.DASHBOARD_DISMISSAL)
     this.setupLoaders(this.libraryId)
     this.loadAll()
   },
@@ -277,6 +305,11 @@ export default Vue.extend({
     },
   },
   computed: {
+    // ShabbyFork: the item-context flag that puts "Hide from dashboard" in a card's menu, only when
+    // the server supports dismissal.
+    dashboardHideContext(): ItemContext[] {
+      return this.forkDismissal ? [ItemContext.DASHBOARD_HIDE] : []
+    },
     settingsKey(): string {
       return `${CLIENT_SETTING.WEBUI_RECOMMENDED}.${this.libraryId}`.toLowerCase()
     },
@@ -355,14 +388,14 @@ export default Vue.extend({
             loader: this.loaderKeepReadingBooks,
             type: SectionType.BOOK,
             value: section,
-            itemContext: [ItemContext.SHOW_SERIES],
+            itemContext: [ItemContext.SHOW_SERIES, ...this.dashboardHideContext],
           }
         case RecommendedViewSection.ON_DECK:
           return {
             loader: this.loaderOnDeckBooks,
             type: SectionType.BOOK,
             value: section,
-            itemContext: [ItemContext.SHOW_SERIES],
+            itemContext: [ItemContext.SHOW_SERIES, ...this.dashboardHideContext],
           }
         case RecommendedViewSection.RECENTLY_RELEASED_BOOKS:
           return {
@@ -402,13 +435,14 @@ export default Vue.extend({
             loader: this.loaderNewOnDeckBooks,
             type: SectionType.BOOK,
             value: section,
-            itemContext: [ItemContext.SHOW_SERIES],
+            itemContext: [ItemContext.SHOW_SERIES, ...this.dashboardHideContext],
           }
         case RecommendedViewSection.READLISTS_IN_PROGRESS:
           return {
             loader: this.loaderReadListsInProgress,
             type: SectionType.READLIST,
             value: section,
+            itemContext: this.dashboardHideContext,
           }
         default:
           return undefined
@@ -416,6 +450,10 @@ export default Vue.extend({
     },
     async scrollChanged(loader: PageLoader<any>, percent: number) {
       if (percent > 0.95) await loader.loadNext()
+    },
+    dismissalChanged() {
+      // A hide/restore changes which items the fork serves; reload the rows at once (not throttled).
+      this.loadAll(true)
     },
     getRequestLibraryId(libraryId: string): string[] {
       return libraryId !== LIBRARIES_ALL ? [libraryId] : this.$store.getters.getLibrariesPinned.map((it: LibraryDto) => it.id)

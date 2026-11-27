@@ -211,6 +211,7 @@
   "common": {
     "age": "Age",
     "all_libraries": "All Libraries",
+    "restore": "Restore",
     "all_of": "All of",
     "any_of": "Any of",
     "book": "Book",
@@ -294,7 +295,11 @@
     "recently_added_series": "Recently Added Series",
     "recently_read_books": "Recently Read Books",
     "recently_released_books": "Recently Released Books",
-    "recently_updated_series": "Recently Updated Series"
+    "recently_updated_series": "Recently Updated Series",
+    "hidden_items": "Hidden items",
+    "hidden_items_empty": "Nothing hidden. Use “Hide from dashboard” on a card to remove a series or reading list here; it comes back when you next open it.",
+    "hidden_series": "Series",
+    "hidden_readlist": "Reading list"
   },
   "data_import": {
     "book_number": "Book number: {name}",
@@ -910,6 +915,7 @@
     "edit": "Edit",
     "edit_metadata": "Edit metadata",
     "empty_trash": "Empty trash",
+    "hide_from_dashboard": "Hide from dashboard",
     "mark_read": "Mark as read",
     "mark_unread": "Mark as unread",
     "pin": "Pin",

@@ -9,6 +9,15 @@ const API_FORK = '/api/v1/fork'
 export enum ForkCapability {
   READ_CONTEXT = 'read-context',
   DASHBOARD_ROWS = 'dashboard-rows',
+  DASHBOARD_DISMISSAL = 'dashboard-dismissal',
+}
+
+export type DashboardDismissalKind = 'SERIES' | 'READLIST'
+
+/** A series or reading list hidden from the dashboard activity rows. */
+export interface DashboardDismissalDto {
+  kind: DashboardDismissalKind
+  targetId: string
 }
 
 /**
@@ -74,6 +83,21 @@ export default class ShabbyforkService {
 
   async getReadListsInProgress(pageRequest?: PageRequest): Promise<Page<ReadListDto>> {
     return this.getPage<ReadListDto>('readlists/in-progress', 'reading lists in progress', undefined, pageRequest)
+  }
+
+  /** The series / reading lists the user has hidden from the activity rows and not re-opened since. */
+  async getDismissals(): Promise<DashboardDismissalDto[]> {
+    return (await this.http.get(`${API_FORK}/dashboard/dismissals`)).data
+  }
+
+  /** Hide a series (SERIES) or reading list (READLIST) from the activity rows. */
+  async dismiss(kind: DashboardDismissalKind, targetId: string) {
+    await this.http.post(`${API_FORK}/dashboard/dismiss`, {kind, targetId})
+  }
+
+  /** Restore a hidden series or reading list. */
+  async restore(kind: DashboardDismissalKind, targetId: string) {
+    await this.http.post(`${API_FORK}/dashboard/restore`, {kind, targetId})
   }
 
   private async getPage<T>(path: string, what: string, libraryIds?: string[], pageRequest?: PageRequest): Promise<Page<T>> {

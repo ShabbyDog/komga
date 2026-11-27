@@ -1,0 +1,102 @@
+{
+  "version": "1.0.0",
+  "about": "Shared scenario vectors for manual dashboard-row dismissal (Keep reading / On Deck / New-on-deck / In-progress reading lists). Canonical semantics live in dashboard-rows-spec.md section 'Row dismissal'. Both repos (komga-reader app LibraryRepository + komga/ShabbyFork ShabbyforkDashboardDao) must assert these. Bump 'version' on ANY change; each suite asserts the version it was written against, so a one-sided edit fails the other repo's build. Paired with dashboard-rows-vectors.json (the 'newDrop' decision), which versions independently.",
+  "decisionUnderTest": "dismissed",
+  "decisionDefinition": "latest = max(readDate for books where readDate != null); dismissed = dismissedAt != null && (latest == null || latest <= dismissedAt). Strict: a read STRICTLY after dismissedAt resurrects (un-hides); a read equal to dismissedAt does not. 'readDate' is the read-progress LAST-READ instant (set/updated when a book is opened in the reader), not the completion date. Identical function for kind=SERIES and kind=READLIST; it runs over the item's books either way.",
+  "fields": {
+    "kind": "SERIES (item is a series; books = the series' books; suppresses Keep reading + On Deck + New-on-deck) or READLIST (item is a reading list; books = the list's books; suppresses In-progress reading lists). Does not change the decision, only which row the suppression applies to.",
+    "dismissedAt": "instant the user dismissed the item, ISO-8601; null = never dismissed",
+    "books[].readDate": "read-progress LAST-READ instant for that book (updated on open/read); null = never opened",
+    "expectedDismissed": "canonical answer: is the item currently hidden from its row? Both implementations must return this."
+  },
+  "vectors": [
+    {
+      "name": "never_dismissed",
+      "description": "No dismissal recorded. Always shown regardless of reads.",
+      "kind": "SERIES",
+      "dismissedAt": null,
+      "books": [
+        { "id": "a1", "readDate": "2026-11-10T00:00:00Z" },
+        { "id": "a2", "readDate": null }
+      ],
+      "expectedDismissed": false
+    },
+    {
+      "name": "dismissed_no_reopen",
+      "description": "Dismissed; the only read predates the dismissal. Stays hidden.",
+      "kind": "SERIES",
+      "dismissedAt": "2026-11-20T00:00:00Z",
+      "books": [
+        { "id": "b1", "readDate": "2026-11-10T00:00:00Z" },
+        { "id": "b2", "readDate": null }
+      ],
+      "expectedDismissed": true
+    },
+    {
+      "name": "dismissed_never_opened",
+      "description": "Dismissed; no book in the series has ever been opened (all readDate null). latest == null -> stays hidden.",
+      "kind": "SERIES",
+      "dismissedAt": "2026-11-20T00:00:00Z",
+      "books": [
+        { "id": "c1", "readDate": null },
+        { "id": "c2", "readDate": null }
+      ],
+      "expectedDismissed": true
+    },
+    {
+      "name": "reopened_after_dismiss",
+      "description": "Dismissed, then a book opened later. Read strictly after dismissedAt -> resurrected (shown again).",
+      "kind": "SERIES",
+      "dismissedAt": "2026-11-20T00:00:00Z",
+      "books": [
+        { "id": "d1", "readDate": "2026-11-10T00:00:00Z" },
+        { "id": "d2", "readDate": "2026-11-21T00:00:00Z" }
+      ],
+      "expectedDismissed": false
+    },
+    {
+      "name": "reopen_strict_tie",
+      "description": "A read whose instant exactly equals dismissedAt. Strict comparison -> does NOT resurrect; stays hidden.",
+      "kind": "SERIES",
+      "dismissedAt": "2026-11-20T00:00:00Z",
+      "books": [
+        { "id": "e1", "readDate": "2026-11-20T00:00:00Z" }
+      ],
+      "expectedDismissed": true
+    },
+    {
+      "name": "multi_book_one_reopened",
+      "description": "Several books; one opened after the dismissal. Any one reopen resurrects the whole series (we take the max readDate).",
+      "kind": "SERIES",
+      "dismissedAt": "2026-11-20T00:00:00Z",
+      "books": [
+        { "id": "f1", "readDate": "2026-11-05T00:00:00Z" },
+        { "id": "f2", "readDate": null },
+        { "id": "f3", "readDate": "2026-11-25T00:00:00Z" }
+      ],
+      "expectedDismissed": false
+    },
+    {
+      "name": "readlist_dismissed_quiet",
+      "description": "Reading list dismissed; no book in the list opened since. Stays hidden from In-progress reading lists.",
+      "kind": "READLIST",
+      "dismissedAt": "2026-11-20T00:00:00Z",
+      "books": [
+        { "id": "g1", "readDate": "2026-11-18T00:00:00Z" },
+        { "id": "g2", "readDate": "2026-11-19T00:00:00Z" }
+      ],
+      "expectedDismissed": true
+    },
+    {
+      "name": "readlist_reopened_after_dismiss",
+      "description": "Reading list dismissed, then a book in the list opened later. Same predicate as SERIES -> resurrected.",
+      "kind": "READLIST",
+      "dismissedAt": "2026-11-20T00:00:00Z",
+      "books": [
+        { "id": "h1", "readDate": "2026-11-18T00:00:00Z" },
+        { "id": "h2", "readDate": "2026-11-22T00:00:00Z" }
+      ],
+      "expectedDismissed": false
+    }
+  ]
+}

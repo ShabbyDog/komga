@@ -4,6 +4,7 @@ import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
+import org.gotson.komga.domain.model.DashboardDismissalKind
 
 /**
  * ShabbyFork: what this server offers beyond stock Komga. Clients enable each feature by its
@@ -42,4 +43,13 @@ data class ShabbyforkReadProgressUpdateDto(
   @get:Positive val page: Int?,
   val completed: Boolean?,
   val readListId: String?,
+)
+
+/**
+ * ShabbyFork: a Longbox dashboard item to hide from, or restore to, its activity row. [targetId]
+ * is a series id when [kind] is SERIES, or a reading list id when it is READLIST.
+ */
+data class ShabbyforkDashboardDismissalDto(
+  val kind: DashboardDismissalKind,
+  @get:NotBlank val targetId: String,
 )
