@@ -153,6 +153,23 @@ rollback does this). Stock Komga and this build onwards start on it either way.
 
 Back up `shabbyfork.sqlite` together with the other databases from now on.
 
+### Keep the stock API usable by other clients
+
+*Added in 1.30.1-ShabbyFork-build3.*
+
+A ShabbyFork server is also reached by other reading clients — Mihon/Tachiyomi, Panels, Chunky
+and the like — over the standard Komga API, and they must see exactly what stock Komga gives.
+Every fork feature's client-facing behaviour therefore lives behind its own `/api/v1/fork/…`
+endpoints; the stock endpoints (On deck, the book listing, read progress, series, OPDS, sync)
+are left untouched, so a client that does not know about the fork cannot tell it from stock. The
+only deliberate exception is the read copied onto a new duplicate above, which is ordinary Komga
+read progress every client sees — correct, since you have read that issue.
+
+A test guards this: it dismisses a series and records a reading-list context, both fork-only, then
+checks that the stock `GET /api/v1/books/ondeck`, the in-progress listing and the book's read
+progress are unchanged. A future change that let fork state leak into a stock endpoint would fail
+it.
+
 ## Scanning
 
 ### Scan a library when its files change
