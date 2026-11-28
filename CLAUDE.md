@@ -115,11 +115,13 @@ to cover it are disabled (see below). macOS is covered by neither.
 # Linux, from the same checkout, via WSL
 git archive --format=tar HEAD | wsl -d Ubuntu --exec bash -lc 'rm -rf ~/komga-linux && mkdir -p ~/komga-linux && tar x -C ~/komga-linux'
 wsl -d Ubuntu --exec bash -lc 'cd ~/komga-linux && sed -i "s/\r$//" gradlew && git init -q && git add -A && git -c user.email=t@t.local -c user.name=wsl commit -qm snapshot'
-wsl -d Ubuntu --exec bash -lc 'cd ~/komga-linux && JAVA_HOME=$HOME/jdk21 PATH=$HOME/jdk21/bin:/usr/local/bin:/usr/bin:/bin ./gradlew :komga:test ktlintCheck --console=plain'
+wsl -d Ubuntu --exec bash -lc 'cd ~/komga-linux && JAVA_HOME=$HOME/jdk25 PATH=$HOME/jdk25/bin:/usr/local/bin:/usr/bin:/bin ./gradlew :komga:test ktlintCheck --console=plain'
 ```
 
-The WSL side needs JDK 21+. `~/jdk21` is a Temurin tarball extracted by hand — no root, no
-apt. Four things that otherwise waste an hour:
+The WSL side uses JDK 25 — the version builds now run on, for the Komga 2.0 preparation (the
+build targets Java 17 bytecode and still compiles on 21+, but 25 is the standard everywhere now).
+`~/jdk25` is a Temurin tarball extracted by hand — no root, no apt. Four things that otherwise
+waste an hour:
 
 - Use `wsl --exec`, not `wsl --`. With `--`, WSL hands the command to a shell that expands
   `$PATH` itself, and the Windows half of it (`Program Files (x86)`) is a syntax error there.
