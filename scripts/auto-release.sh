@@ -217,7 +217,7 @@ preflight() {
       log "                 javac on PATH is $(readlink -f "$(command -v javac)") -- a different"
       log "                 installation; point JAVA_HOME at a home that owns it"
     else
-      log "                 install a JDK, e.g. openjdk-21-jdk-headless"
+      log "                 install a JDK, e.g. openjdk-25-jdk-headless"
     fi
     ok=1
   else
