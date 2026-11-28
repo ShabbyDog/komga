@@ -374,4 +374,67 @@ class ShabbyforkDashboardControllerTest(
       }
     }
   }
+
+  /**
+   * Stock-parity tripwire: fork-only state must never leak into the stock Komga endpoints that other
+   * third-party clients (Mihon, Panels, Chunky, …) call. A dismissal or a reading-list read context
+   * is Longbox's, served only from the fork's own `/api/v1/fork` endpoints; the stock on-deck, in-progress and book
+   * endpoints must behave exactly as upstream Komga does. If a future change wires fork filtering or
+   * a fork field into a stock endpoint, one of these fails.
+   */
+  @Nested
+  inner class StockEndpointParity {
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given a dismissed series when calling the stock on deck endpoint then the series is still returned`() {
+      val (sa, a) = makeSeriesWithBooks("a")
+      read(a[0]) // a2 is on deck
+
+      dismiss("SERIES", sa.id)
+
+      // the fork endpoint honours the dismissal...
+      mockMvc.get("/api/v1/fork/books/on-deck").andExpect {
+        jsonPath("$.content") { value(empty<Any>()) }
+      }
+      // ...but the stock endpoint a third-party client calls is unchanged
+      mockMvc.get("/api/v1/books/ondeck").andExpect {
+        status { isOk() }
+        jsonPath("$.content[*].name") { value(contains("a2")) }
+      }
+    }
+
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given a dismissed series when listing in-progress books on the stock endpoint then the book is still returned`() {
+      val (sa, a) = makeSeriesWithBooks("a")
+      read(a[0], completed = false) // a1 is in progress
+
+      dismiss("SERIES", sa.id)
+
+      // the fork keep-reading row honours the dismissal...
+      mockMvc.get("/api/v1/fork/books/keep-reading").andExpect {
+        jsonPath("$.content") { value(empty<Any>()) }
+      }
+      // ...but the stock in-progress listing is unchanged
+      mockMvc.get("/api/v1/books?read_status=IN_PROGRESS").andExpect {
+        status { isOk() }
+        jsonPath("$.content[*].name") { value(contains("a1")) }
+      }
+    }
+
+    @Test
+    @WithMockCustomUser(id = "1")
+    fun `given a read made through a reading list when fetching the book on the stock endpoint then its read progress carries no fork context`() {
+      val (_, a) = makeSeriesWithBooks("a")
+      read(a[0], completed = false, throughList = list(a[0], a[1])) // sets a fork read context
+
+      mockMvc.get("/api/v1/books/${a[0].id}").andExpect {
+        status { isOk() }
+        jsonPath("$.readProgress.page") { value(3) }
+        jsonPath("$.readProgress.completed") { value(false) }
+        // the reading-list context lives in the fork's own table; the stock DTO must not expose it
+        jsonPath("$.readProgress.readListId") { doesNotExist() }
+      }
+    }
+  }
 }
